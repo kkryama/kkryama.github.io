@@ -2,5 +2,5 @@
 
 source "https://rubygems.org"
 
-
-gem "github-pages", group: :jekyll_plugins
+gem "jekyll-theme-primer"
+gem "kramdown-parser-gfm" # jekyll-theme-primer で利用している
