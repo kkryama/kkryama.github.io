@@ -1,0 +1,17 @@
+---
+layout: default
+title: 日記一覧
+---
+
+<h1>日記一覧</h1>
+
+<ul>
+  {% assign sorted_diary = site.diary | sort: 'date' | reverse %}
+  {% for diary in sorted_diary %}
+    <li>
+      {{ diary.date | date: "%Y-%m-%d" }}: 
+      <a href="{{ diary.url }}">{{ diary.title }}</a>
+    </li>
+  {% endfor %}
+</ul>
+

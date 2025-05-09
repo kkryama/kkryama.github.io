@@ -1,0 +1,9 @@
+title: kkryama.github.io
+description: _yama_P_'s page
+theme: jekyll-theme-cayman
+
+collections:
+  diary:
+    output: true
+    permalink: /diary/:name/
+
