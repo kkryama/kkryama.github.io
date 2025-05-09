@@ -5,7 +5,7 @@
 
 ---
 
-## ディレクトリ構成
+# ディレクトリ構成
 
 ```
 ├── README.md             # このファイル
@@ -25,16 +25,16 @@
 
 ---
 
-## ローカル環境セットアップ
+# ローカル環境セットアップ
 
-### 必要パッケージのインストール (Ubuntu)
+## 必要パッケージのインストール (Ubuntu)
 
 ```bash
 sudo apt update
 sudo apt install ruby-full build-essential zlib1g-dev
 ```
 
-### GEM_HOME 環境変数の設定
+## GEM_HOME 環境変数の設定
 
 ```
 echo 'export GEM_HOME="$HOME/.gem"' >> ~/.bashrc
@@ -42,13 +42,13 @@ echo 'export PATH="$HOME/.gem/bin:$PATH"' >> ~/.bashrc
 source ~/.bashrc
 ```
 
-### bundler と jekyll のインストール
+## bundler と jekyll のインストール
 
 ```
 gem install bundler jekyll
 ```
 
-### 依存関係のインストール
+## 依存関係のインストール
 
 ```
 bundle install --path vendor/bundle
@@ -64,7 +64,57 @@ bundle exec jekyll serve
 
 ---
 
-## 記事の追加方法
+# 記事の追加方法
+
+## テンプレートと記事作成スクリプトについて
+
+このリポジトリには、記事作成用のテンプレートとスクリプトが用意されています。
+
+### テンプレートの場所
+
+- _templates/post_template.md … 技術記事用テンプレート
+- _templates/diary_template.md … 日記用テンプレート
+
+
+### スクリプトの使い方
+
+記事を新しく作成する場合は、以下のコマンドを実行してください。
+
+#### 技術記事を作成する場合
+
+```bash
+./_templates/new_post.sh 記事タイトル（英数字とハイフンのみ）
+```
+
+例：
+
+```bash
+./_templates/new_post.sh my-new-article
+```
+
+実行すると `_posts/YYYY-MM-DD-my-new-article.md` が作成され、テンプレートが適用されます。
+
+#### 日記を作成する場合
+
+```bash
+./_templates/new_diary.sh
+```
+
+実行すると _diary/YYYY-MM-DD.md が作成され、テンプレートが適用されます。
+
+### 注意事項
+
+- スクリプトを初めて使う場合は、実行権限を付与してください。（初回のみ）
+
+```bash
+chmod +x _templates/new_post.sh
+chmod +x _templates/new_diary.sh
+```
+
+- 日記のファイル名は日付のみ、技術記事のファイル名は YYYY-MM-DD-タイトル.md 形式で作成されます。
+- タイトルは英数字とハイフンのみを推奨します。
+
+## テンプレートによらない記事の追加
 
 ### 技術記事の追加
 `_posts/` に以下の形式でファイルを追加。
@@ -96,9 +146,11 @@ date: YYYY-MM-DD
 日記の本文
 ```
 
-## その他
+
+
+# その他
 
 - `diary.html`: 日記記事の一覧ページ
-
+- `posts.html`: 技術記事の一覧ページ
 - `_config.yml`: Jekyll サイト設定
     - コレクションとして diary を設定済み
