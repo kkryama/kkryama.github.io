@@ -16,6 +16,11 @@
 ├── Gemfile.lock          # gem のバージョン管理
 ├── _posts/               # 技術記事 (YYYY-MM-DD-title.md)
 ├── _diary/               # 日記記事 (YYYY-MM-DD.md)
+├── _templates/           # テンプレートと記事作成スクリプト
+│   ├── post_template.md      # 技術記事用テンプレート
+│   ├── diary_template.md     # 日記用テンプレート
+│   ├── new_post.sh           # 技術記事作成用スクリプト
+│   └── new_diary.sh          # 日記作成用スクリプト
 ├── diary.html            # 日記一覧ページ
 ├── posts.html            # 技術記事一覧ページ
 ├── _site/                # ビルドされたサイト (Git 管理対象外)
