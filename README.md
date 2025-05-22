@@ -77,8 +77,9 @@ bundle exec jekyll serve
 
 ### テンプレートの場所
 
-- _templates/post_template.md … 技術記事用テンプレート
+- _templates/creation_template.md … 創作記事用テンプレート
 - _templates/diary_template.md … 日記用テンプレート
+- _templates/post_template.md … 技術記事用テンプレート
 
 
 ### スクリプトの使い方
@@ -99,6 +100,20 @@ bundle exec jekyll serve
 
 実行すると `_posts/YYYY-MM-DD-my-new-article.md` が作成され、テンプレートが適用されます。
 
+#### 創作記事を作成する場合
+
+```bash
+./_templates/new_creation.sh 記事タイトル（英数字とハイフンのみ）
+```
+
+例：
+
+```bash
+./_templates/new_creation.sh my-creation-title
+```
+
+実行すると `_creation/YYYY-MM-DD-my-creation-title.md` が作成され、テンプレートが適用されます。
+
 #### 日記を作成する場合
 
 ```bash
@@ -112,17 +127,33 @@ bundle exec jekyll serve
 - スクリプトを初めて使う場合は、実行権限を付与してください。（初回のみ）
 
 ```bash
-chmod +x _templates/new_post.sh
 chmod +x _templates/new_diary.sh
+chmod +x _templates/new_creation.sh
+chmod +x _templates/new_post.sh
 ```
 
-- 日記のファイル名は日付のみ、技術記事のファイル名は YYYY-MM-DD-タイトル.md 形式で作成されます。
+- 日記のファイル名は日付のみ、技術記事および創作記事のファイル名は YYYY-MM-DD-タイトル.md 形式で作成されます。
 - タイトルは英数字とハイフンのみを推奨します。
 
 ## テンプレートによらない記事の追加
 
 ### 技術記事の追加
 `_posts/` に以下の形式でファイルを追加。
+
+ファイル名: YYYY-MM-DD-title.md
+
+```
+---
+layout: post
+title: "記事タイトル"
+date: YYYY-MM-DD
+---
+
+記事の本文
+```
+
+### 創作記事の追加
+`_creation/` に以下の形式でファイルを追加。
 
 ファイル名: YYYY-MM-DD-title.md
 
@@ -155,7 +186,8 @@ date: YYYY-MM-DD
 
 # その他
 
+- `creation.html`: 創作記事の一覧ページ
 - `diary.html`: 日記記事の一覧ページ
 - `posts.html`: 技術記事の一覧ページ
 - `_config.yml`: Jekyll サイト設定
-    - コレクションとして diary を設定済み
+    - コレクションとして creation, diary を設定済み

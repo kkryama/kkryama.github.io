@@ -6,4 +6,7 @@ collections:
   diary:
     output: true
     permalink: /diary/:name/
+  creation:
+    output: true
+    permalink: /creation/:name/
 
