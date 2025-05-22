@@ -12,5 +12,5 @@ title: Home
 
 ## about
 
-- [Profile](/about.html)
+- [Profile](/profile.html)
 
