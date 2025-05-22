@@ -3,13 +3,13 @@ layout: default
 title: Home
 ---
 
-## コンテンツ
+## Contents
 
-- [技術記事一覧](/posts.html)
-- [日記一覧](/diary.html)
+- [Tech](/posts.html)
+- [Diary](/diary.html)
 
 
 ## about
 
-- [プロフィール](/about.html)
+- [Profile](/about.html)
 
