@@ -254,3 +254,66 @@ last_modified_at: YYYY-MM-DD HH:MM:SS +TIMEZONE  # ビルド時に自動更新�
 - `.sass-cache/`: Sassキャッシュ
 - `.bundle/`: bundlerキャッシュ
 - IDEファイル、一時ファイル等
+
+## コミットメッセージ規約
+
+このプロジェクトでは [Conventional Commits](https://www.conventionalcommits.org/) を参考にコミットメッセージを記述します。
+
+### 基本フォーマット
+
+```
+<type>[optional scope]: <description>
+
+[optional body]
+
+[optional footer(s)]
+```
+
+### 主なタイプ
+
+- `feat`: 新しい機能の追加
+- `fix`: バグ修正
+- `docs`: ドキュメントのみの変更
+- `style`: コードの意味に影響を与えない変更（空白、フォーマット、セミコロンの欠落など）
+- `refactor`: バグ修正でも機能追加でもないコード変更
+- `test`: テストの追加や既存のテストの修正
+- `chore`: ビルドプロセスやツール、ライブラリの変更
+
+### 例
+
+```bash
+feat: 新しい技術記事テンプレートを追加
+fix: 日記一覧ページのレイアウト修正
+docs: README にコミット規約を追加
+chore: Jekyll の設定を更新
+```
+
+### 記事関連のコミット例
+
+```bash
+feat: Setup Windowsの記事を追加
+feat: 日記テンプレート作成スクリプトを追加
+docs: プロフィールページを更新
+fix: 記事一覧ページのソート順を修正
+```
+
+### Copilotでのコミットメッセージ生成
+
+作業完了後、以下のプロンプトでCopilotにコミットメッセージを作成してもらえます：
+
+```
+ここまでの作業内容をgit addしています。
+Conventional Commitsの規約に従って、日本語で変更点を要約したコミットメッセージを作成してください。
+```
+
+#### より詳細な指示例
+
+```
+以下の変更をgit addしています：
+- [変更内容の説明]
+
+Conventional Commitsの規約に従って、以下の形式でコミットメッセージを作成してください：
+1. type: 適切なタイプ（feat, fix, docs等）を選択
+2. description: 日本語で簡潔に変更内容を要約
+3. body（必要に応じて）: 変更の理由や詳細説明
+```
