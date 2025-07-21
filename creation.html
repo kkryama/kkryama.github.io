@@ -18,6 +18,9 @@ permalink: /creation.html
     <li>
       {{ item.date | date: "%Y-%m-%d" }}: 
       <a href="{{ item.url }}">{{ item.title }}</a>
+      {% if item.last_modified_at and item.last_modified_at != item.date %}
+        <br><small>最終更新: {{ item.last_modified_at | date: "%Y-%m-%d %H:%M" }}</small>
+      {% endif %}
     </li>
   {% endfor %}
 </ul>

@@ -15,6 +15,9 @@
 ├── _config.yml           # Jekyll 設定ファイル
 ├── Gemfile               # 必要な gem を記述
 ├── Gemfile.lock          # gem のバージョン管理
+├── build.sh              # ビルドスクリプト（最終更新日自動更新とJekyllビルド）
+├── _layouts/             # カスタムレイアウトファイル
+│   └── post.html             # 投稿用レイアウト
 ├── _posts/               # 技術記事 (YYYY-MM-DD-title.md)
 ├── _diary/               # 日記記事 (YYYY-MM-DD.md)
 ├── _creation/            # 創作記事 (YYYY-MM-DD-title.md)
@@ -25,6 +28,8 @@
 │   ├── new_post.sh           # 技術記事作成用スクリプト
 │   ├── new_diary.sh          # 日記作成用スクリプト
 │   └── new_creation.sh       # 創作記事作成用スクリプト
+├── scripts/              # ビルド用スクリプト
+│   └── update_modified_dates.py  # 最終更新日自動更新スクリプト
 ├── posts.html            # 技術記事一覧ページ
 ├── diary.html            # 日記一覧ページ
 ├── creation.html         # 創作記事一覧ページ
@@ -75,6 +80,25 @@ bundle exec jekyll serve
 ```
 
 ブラウザで http://127.0.0.1:4000 を開く。
+
+## サイトのビルド
+
+最終更新日を自動更新してからJekyllサイトをビルドするには：
+
+```bash
+./build.sh
+```
+
+このスクリプトは以下の処理を行います：
+1. Git履歴から各記事の最終更新日時を取得（ISO形式: YYYY-MM-DD HH:MM:SS +TIMEZONE）
+2. 各記事のfront matterに `last_modified_at` フィールドを自動追加/更新
+3. Jekyllサイトをビルド
+
+### 最終更新日の表示
+
+- **記事ページ**: 投稿日と最終更新日時（時刻含む）を表示
+- **一覧ページ**: 最終更新日が投稿日と異なる場合のみ、最終更新日時を小さく表示
+- カスタムレイアウト（`_layouts/post.html`）により、Jekyll標準テーマを拡張して表示
 
 ---
 
@@ -156,6 +180,7 @@ chmod +x _templates/new_post.sh
 layout: post
 title: "記事タイトル"
 date: YYYY-MM-DD
+last_modified_at: YYYY-MM-DD HH:MM:SS +TIMEZONE  # ビルド時に自動更新されます
 ---
 
 記事の本文
@@ -171,6 +196,7 @@ date: YYYY-MM-DD
 layout: post
 title: "記事タイトル"
 date: YYYY-MM-DD
+last_modified_at: YYYY-MM-DD HH:MM:SS +TIMEZONE  # ビルド時に自動更新されます
 ---
 
 記事の本文
@@ -186,6 +212,7 @@ date: YYYY-MM-DD
 layout: post
 title: "日記タイトル"
 date: YYYY-MM-DD
+last_modified_at: YYYY-MM-DD HH:MM:SS +TIMEZONE  # ビルド時に自動更新されます
 ---
 
 日記の本文
@@ -201,6 +228,11 @@ date: YYYY-MM-DD
 - `posts.html`: 技術記事一覧ページ
 - `diary.html`: 日記一覧ページ
 - `creation.html`: 創作記事一覧ページ
+
+## レイアウト
+- `_layouts/post.html`: 投稿用カスタムレイアウト
+    - 投稿日と最終更新日時を表示
+    - 最終更新日が投稿日と異なる場合のみ最終更新日を表示
 
 ## Jekyll設定
 - `_config.yml`: Jekyll サイト設定

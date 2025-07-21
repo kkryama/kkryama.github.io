@@ -18,6 +18,9 @@ permalink: /posts.html
     <li>
       {{ post.date | date: "%Y-%m-%d" }}: 
       <a href="{{ post.url }}">{{ post.title }}</a>
+      {% if post.last_modified_at and post.last_modified_at != post.date %}
+        <br><small>最終更新: {{ post.last_modified_at | date: "%Y-%m-%d %H:%M" }}</small>
+      {% endif %}
     </li>
   {% endfor %}
 </ul>

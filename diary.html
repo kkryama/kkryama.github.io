@@ -18,6 +18,9 @@ permalink: /diary.html
     <li>
       {{ diary.date | date: "%Y-%m-%d" }}: 
       <a href="{{ diary.url }}">{{ diary.title }}</a>
+      {% if diary.last_modified_at and diary.last_modified_at != diary.date %}
+        <br><small>最終更新: {{ diary.last_modified_at | date: "%Y-%m-%d %H:%M" }}</small>
+      {% endif %}
     </li>
   {% endfor %}
 </ul>
