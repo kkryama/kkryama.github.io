@@ -90,9 +90,10 @@ bundle exec jekyll serve
 ```
 
 このスクリプトは以下の処理を行います：
-1. Git履歴から各記事の最終更新日時を取得（ISO形式: YYYY-MM-DD HH:MM:SS +TIMEZONE）
-2. 各記事のfront matterに `last_modified_at` フィールドを自動追加/更新
-3. Jekyllサイトをビルド
+1. 修正されているが未コミットのファイルを特定
+2. Git履歴から各記事の最終更新日時を取得（ISO形式: YYYY-MM-DD HH:MM:SS +TIMEZONE）
+3. 対象ファイルのfront matterに `last_modified_at` フィールドを自動追加/更新（コミット済みファイルは処理しない）
+4. Jekyllサイトをビルド
 
 ### 最終更新日の表示
 
