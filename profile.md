@@ -6,8 +6,11 @@ permalink: /profile.html
 
 # プロフィール
 
+![profile](assets/images/common/profile.jpg)
+
 ## 基本情報
 - Name: `Kakeru YAMAGIWA`
+- GitHub: [\_yama\_P\_](https://github.com/kkryama)
 - Qiita: [\_yama\_P\_](https://qiita.com/_yama_P_)
 - X(Twitter): [@\_yama\_P\_](https://twitter.com/_yama_P_)
 
