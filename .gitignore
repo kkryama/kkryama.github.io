@@ -1,6 +1,26 @@
+# Jekyll build files
 _site/
-vendor/
-*.log
-.DS_Store
+.sass-cache/
+.jekyll-cache/
+.jekyll-metadata
 
+# Bundle files
+vendor/
 .bundle/
+
+# System files
+.DS_Store
+Thumbs.db
+
+# IDE files
+.vscode/
+.idea/
+
+# Temporary files
+*.tmp
+*.swp
+*.swo
+*~
+
+# Log files
+*.log

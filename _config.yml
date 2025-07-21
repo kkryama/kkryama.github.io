@@ -2,6 +2,13 @@ title: kkryama.github.io
 description: _yama_P_'s page
 theme: jekyll-theme-primer
 
+url: "https://kkryama.github.io"
+baseurl: ""
+
+lang: ja
+
+permalink: /:year/:month/:day/:title/
+
 collections:
   diary:
     output: true
@@ -9,4 +16,30 @@ collections:
   creation:
     output: true
     permalink: /creation/:name/
+
+# 除外設定
+exclude:
+  - README.md
+  - Gemfile
+  - Gemfile.lock
+  - vendor/
+  - _templates/
+
+# デフォルト設定
+defaults:
+  - scope:
+      path: ""
+      type: "posts"
+    values:
+      layout: "post"
+  - scope:
+      path: ""
+      type: "diary"
+    values:
+      layout: "post"
+  - scope:
+      path: ""
+      type: "creation"
+    values:
+      layout: "post"
 

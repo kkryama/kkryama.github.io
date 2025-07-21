@@ -9,22 +9,31 @@
 
 ```
 ├── README.md             # このファイル
-├── index.md              # 自己紹介ページ
-├── about.md              # プロフィールページ
+├── .gitignore            # Git管理除外設定
+├── index.md              # ホームページ
+├── profile.md            # プロフィールページ
 ├── _config.yml           # Jekyll 設定ファイル
 ├── Gemfile               # 必要な gem を記述
 ├── Gemfile.lock          # gem のバージョン管理
 ├── _posts/               # 技術記事 (YYYY-MM-DD-title.md)
 ├── _diary/               # 日記記事 (YYYY-MM-DD.md)
+├── _creation/            # 創作記事 (YYYY-MM-DD-title.md)
 ├── _templates/           # テンプレートと記事作成スクリプト
 │   ├── post_template.md      # 技術記事用テンプレート
 │   ├── diary_template.md     # 日記用テンプレート
+│   ├── creation_template.md  # 創作記事用テンプレート
 │   ├── new_post.sh           # 技術記事作成用スクリプト
-│   └── new_diary.sh          # 日記作成用スクリプト
-├── diary.html            # 日記一覧ページ
+│   ├── new_diary.sh          # 日記作成用スクリプト
+│   └── new_creation.sh       # 創作記事作成用スクリプト
 ├── posts.html            # 技術記事一覧ページ
+├── diary.html            # 日記一覧ページ
+├── creation.html         # 創作記事一覧ページ
+├── assets/               # 画像などの静的ファイル
+│   └── images/               # 画像ファイル
 ├── _site/                # ビルドされたサイト (Git 管理対象外)
-├── vendor/               # ローカルの gem インストール先 (Git 管理対象外)
+├── .sass-cache/          # Sassキャッシュ (Git 管理対象外)
+├── .bundle/              # Bundlerキャッシュ (Git 管理対象外)
+└── vendor/               # ローカルの gem インストール先 (Git 管理対象外)
 ```
 
 
@@ -41,7 +50,7 @@ sudo apt install ruby-full build-essential zlib1g-dev
 
 ## GEM_HOME 環境変数の設定
 
-```
+```bash
 echo 'export GEM_HOME="$HOME/.gem"' >> ~/.bashrc
 echo 'export PATH="$HOME/.gem/bin:$PATH"' >> ~/.bashrc
 source ~/.bashrc
@@ -49,23 +58,23 @@ source ~/.bashrc
 
 ## bundler と jekyll のインストール
 
-```
+```bash
 gem install bundler jekyll
 ```
 
 ## 依存関係のインストール
 
-```
+```bash
 bundle install --path vendor/bundle
 ```
 
 ## ローカルでの動作確認
 
-```
+```bash
 bundle exec jekyll serve
 ```
 
-ブラウザで http://localhost:4000 を開く。
+ブラウザで http://127.0.0.1:4000 を開く。
 
 ---
 
@@ -186,8 +195,29 @@ date: YYYY-MM-DD
 
 # その他
 
-- `creation.html`: 創作記事の一覧ページ
-- `diary.html`: 日記記事の一覧ページ
-- `posts.html`: 技術記事の一覧ページ
+## ページ構成
+- `index.md`: ホームページ
+- `profile.md`: プロフィールページ
+- `posts.html`: 技術記事一覧ページ
+- `diary.html`: 日記一覧ページ
+- `creation.html`: 創作記事一覧ページ
+
+## Jekyll設定
 - `_config.yml`: Jekyll サイト設定
     - コレクションとして creation, diary を設定済み
+    - permalinkパターン: `/:year/:month/:day/:title/`
+    - テーマ: `jekyll-theme-primer`
+
+## 静的ファイル
+- `assets/images/`: 画像ファイル保存用
+    - `common/`: 共通画像
+    - `creation/`: 創作記事用画像
+    - `diary/`: 日記用画像
+    - `posts/`: 技術記事用画像
+
+## Git管理除外設定
+- `_site/`: Jekyllビルド出力
+- `vendor/`: bundlerローカルインストール
+- `.sass-cache/`: Sassキャッシュ
+- `.bundle/`: bundlerキャッシュ
+- IDEファイル、一時ファイル等
