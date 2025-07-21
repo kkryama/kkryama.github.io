@@ -2,6 +2,7 @@
 layout: post
 title: "Setup Windows"
 date: 2025-05-09
+last_modified_at: 2025-05-11 00:35:56 +0900
 ---
 
 デスクトップPC で Windows 11 をクリーンインストールした際のメモ
