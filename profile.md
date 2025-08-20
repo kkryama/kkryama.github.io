@@ -12,7 +12,8 @@ permalink: /profile.html
 - Name: `Kakeru YAMAGIWA`
 - GitHub: [\_yama\_P\_](https://github.com/kkryama)
 - Qiita: [\_yama\_P\_](https://qiita.com/_yama_P_)
-- X(Twitter): [@\_yama\_P\_](https://twitter.com/_yama_P_)
+- X(Twitter): [@\_yama\_P\_](https://x.com/_yama_P_)
+    - X(Twitter) Closed Account: [@\_P\_amay\_](https://x.com/_P_amay_)
 
 ## スキル
 - Golang
@@ -33,7 +34,9 @@ permalink: /profile.html
 - カメラ
 
 ## 連絡先
+- X(Twitter): [@\_yama\_P\_](https://twitter.com/_yama_P_)
+    - DM を開放しています
 - Line: [\_yama\_p\_](https://line.me/ti/p/e8Np_Ew3jC)
-- Discord: `_yama_P_`
-    - 以前は `_yama_P_#3339`
-
+    - 取り込んでいるとき、寝落ちしているとき以外は早めに反応できるかと
+- Discord: [\_yama\_P\_](https://discord.gg/d4RP4Fe4)
+    - 最近は反応遅めかも
