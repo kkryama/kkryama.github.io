@@ -6,6 +6,7 @@ url: "https://kkryama.github.io"
 baseurl: ""
 
 lang: ja
+future: true
 
 permalink: /:year/:month/:day/:title/
 
