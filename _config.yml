@@ -14,9 +14,6 @@ collections:
   diary:
     output: true
     permalink: /diary/:name/
-  creation:
-    output: true
-    permalink: /creation/:name/
 
 # 除外設定
 exclude:
@@ -36,11 +33,6 @@ defaults:
   - scope:
       path: ""
       type: "diary"
-    values:
-      layout: "post"
-  - scope:
-      path: ""
-      type: "creation"
     values:
       layout: "post"
 

@@ -20,21 +20,19 @@
 │   └── post.html             # 投稿用レイアウト
 ├── _posts/               # 技術記事 (YYYY-MM-DD-title.md)
 ├── _diary/               # 日記記事 (YYYY-MM-DD.md)
-├── _creation/            # 創作記事 (YYYY-MM-DD-title.md)
 ├── _templates/           # テンプレートと記事作成スクリプト
 │   ├── post_template.md      # 技術記事用テンプレート
 │   ├── diary_template.md     # 日記用テンプレート
-│   ├── creation_template.md  # 創作記事用テンプレート
 │   ├── new_post.sh           # 技術記事作成用スクリプト
-│   ├── new_diary.sh          # 日記作成用スクリプト
-│   └── new_creation.sh       # 創作記事作成用スクリプト
+│   └── new_diary.sh          # 日記作成用スクリプト
 ├── scripts/              # ビルド用スクリプト
 │   └── update_modified_dates.py  # 最終更新日自動更新スクリプト
 ├── posts.html            # 技術記事一覧ページ
 ├── diary.html            # 日記一覧ページ
-├── creation.html         # 創作記事一覧ページ
 ├── assets/               # 画像などの静的ファイル
 │   └── images/               # 画像ファイル
+├── apps/                 # 静的Webアプリケーション
+│   └── check-matrix/         # チェックマトリクス（汎用）アプリ
 ├── _site/                # ビルドされたサイト (Git 管理対象外)
 ├── .sass-cache/          # Sassキャッシュ (Git 管理対象外)
 ├── .bundle/              # Bundlerキャッシュ (Git 管理対象外)
@@ -111,7 +109,6 @@ bundle exec jekyll serve
 
 ### テンプレートの場所
 
-- _templates/creation_template.md … 創作記事用テンプレート
 - _templates/diary_template.md … 日記用テンプレート
 - _templates/post_template.md … 技術記事用テンプレート
 
@@ -134,19 +131,6 @@ bundle exec jekyll serve
 
 実行すると `_posts/YYYY-MM-DD-my-new-article.md` が作成され、テンプレートが適用されます。
 
-#### 創作記事を作成する場合
-
-```bash
-./_templates/new_creation.sh 記事タイトル（英数字とハイフンのみ）
-```
-
-例：
-
-```bash
-./_templates/new_creation.sh my-creation-title
-```
-
-実行すると `_creation/YYYY-MM-DD-my-creation-title.md` が作成され、テンプレートが適用されます。
 
 #### 日記を作成する場合
 
@@ -162,11 +146,10 @@ bundle exec jekyll serve
 
 ```bash
 chmod +x _templates/new_diary.sh
-chmod +x _templates/new_creation.sh
 chmod +x _templates/new_post.sh
 ```
 
-- 日記のファイル名は日付のみ、技術記事および創作記事のファイル名は YYYY-MM-DD-タイトル.md 形式で作成されます。
+- 日記のファイル名は日付のみ、技術記事のファイル名は YYYY-MM-DD-タイトル.md 形式で作成されます。
 - タイトルは英数字とハイフンのみを推奨します。
 
 ## テンプレートによらない記事の追加
@@ -187,21 +170,6 @@ last_modified_at: YYYY-MM-DD HH:MM:SS +TIMEZONE  # ビルド時に自動更新�
 記事の本文
 ```
 
-### 創作記事の追加
-`_creation/` に以下の形式でファイルを追加。
-
-ファイル名: YYYY-MM-DD-title.md
-
-```
----
-layout: post
-title: "記事タイトル"
-date: YYYY-MM-DD
-last_modified_at: YYYY-MM-DD HH:MM:SS +TIMEZONE  # ビルド時に自動更新されます
----
-
-記事の本文
-```
 
 ### 日記記事の追加
 `_diary/` に以下の形式でファイルを追加。
@@ -228,7 +196,6 @@ last_modified_at: YYYY-MM-DD HH:MM:SS +TIMEZONE  # ビルド時に自動更新�
 - `profile.md`: プロフィールページ
 - `posts.html`: 技術記事一覧ページ
 - `diary.html`: 日記一覧ページ
-- `creation.html`: 創作記事一覧ページ
 
 ## レイアウト
 - `_layouts/post.html`: 投稿用カスタムレイアウト
@@ -237,16 +204,30 @@ last_modified_at: YYYY-MM-DD HH:MM:SS +TIMEZONE  # ビルド時に自動更新�
 
 ## Jekyll設定
 - `_config.yml`: Jekyll サイト設定
-    - コレクションとして creation, diary を設定済み
+    - コレクションとして diary を設定済み
     - permalinkパターン: `/:year/:month/:day/:title/`
     - テーマ: `jekyll-theme-primer`
 
 ## 静的ファイル
 - `assets/images/`: 画像ファイル保存用
     - `common/`: 共通画像
-    - `creation/`: 創作記事用画像
     - `diary/`: 日記用画像
     - `posts/`: 技術記事用画像
+
+## 静的Webアプリケーション
+- `apps/`: 静的Webアプリケーション用ディレクトリ
+    - `check-matrix/`: チェックマトリクス（汎用）アプリケーション
+        - URL: `https://kkryama.github.io/apps/check-matrix/`
+        - JavaScriptベースの汎用チェックマトリクス管理ツール
+
+### 静的コンテンツの追加方法
+
+新しい静的Webアプリケーションを追加する場合：
+
+1. `apps/` 配下に新しいディレクトリを作成
+2. HTMLファイルやJavaScript、CSSファイルを配置
+3. JekyllはAppsディレクトリを処理せずにそのまま配信するため、通常のHTML/CSS/JSが動作
+4. `https://kkryama.github.io/apps/[ディレクトリ名]/` でアクセス可能
 
 ## Git管理除外設定
 - `_site/`: Jekyllビルド出力

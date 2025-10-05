@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>チェックマトリクス（汎用）</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <main class="app">
+    <header class="app__header">
+  <h1 class="app__title">チェックマトリクス（汎用）</h1>
+      <div class="app__controls">
+        <input type="file" accept="application/json" id="json-file" hidden>
+        <button type="button" id="load-json" class="button">JSON読込</button>
+        <button type="button" id="save-json" class="button button--primary">JSON保存</button>
+        <button type="button" id="reset-data" class="button button--danger">初期化</button>
+        <button type="button" id="add-item" class="button button--accent">項目追加</button>
+        <button type="button" id="add-column" class="button button--accent">列追加</button>
+        <button type="button" id="manage-tags" class="button button--ghost">タグ管理</button>
+        <div class="filter-group">
+          <button type="button" id="toggle-filter" class="button button--ghost">列フィルター ▼</button>
+          <div id="column-filter" class="filter-panel" hidden>
+            <div class="filter-panel__header">
+              <span>表示列</span>
+              <div class="filter-panel__actions">
+                <button type="button" id="select-all-columns" class="link-button">すべて</button>
+                <button type="button" id="clear-all-columns" class="link-button">全解除</button>
+              </div>
+            </div>
+            <div id="column-checkboxes" class="checkbox-list"></div>
+          </div>
+        </div>
+        <div class="filter-group">
+          <button type="button" id="toggle-tag-filter" class="button button--ghost">タグ ▼</button>
+          <div id="tag-filter" class="filter-panel" hidden>
+            <div class="filter-panel__header">
+              <span>タグ</span>
+              <div class="filter-panel__actions">
+                <button type="button" id="select-all-tags" class="link-button">すべて</button>
+                <button type="button" id="clear-all-tags" class="link-button">全解除</button>
+              </div>
+            </div>
+            <div id="tag-checkboxes" class="checkbox-list"></div>
+          </div>
+        </div>
+        <div class="filter-group">
+          <button type="button" id="toggle-item-filter" class="button button--ghost">項目 ▼</button>
+          <div id="item-filter" class="filter-panel" hidden>
+            <div class="filter-panel__header">
+              <span>項目</span>
+              <div class="filter-panel__actions">
+                <button type="button" id="select-all-items" class="link-button">すべて</button>
+                <button type="button" id="clear-all-items" class="link-button">全解除</button>
+              </div>
+            </div>
+            <div id="item-checkboxes" class="checkbox-list checkbox-list--items"></div>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <section class="table-container" aria-live="polite">
+      <table id="matrix-table" class="matrix-table">
+        <thead></thead>
+        <tbody></tbody>
+      </table>
+      <p id="empty-state" class="empty-state" hidden>表示できるデータがありません</p>
+    </section>
+  </main>
+
+  <template id="column-checkbox-template">
+    <label class="checkbox-item">
+      <input type="checkbox" value="">
+      <span></span>
+    </label>
+  </template>
+
+  <dialog id="column-dialog" class="modal" aria-labelledby="column-dialog-title">
+    <form id="column-form" class="modal__form">
+      <h2 id="column-dialog-title" class="modal__title">列追加</h2>
+      <label class="modal__field">
+        <span class="modal__label">列名</span>
+        <input type="text" id="column-name" autocomplete="off" required>
+      </label>
+      <p id="column-error" class="modal__error" role="alert" hidden></p>
+      <div class="modal__actions">
+        <button type="button" class="button button--ghost" data-action="cancel-column">キャンセル</button>
+        <button type="submit" id="column-submit" class="button button--primary">追加</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="item-dialog" class="modal" aria-labelledby="item-dialog-title">
+    <form id="item-form" class="modal__form">
+      <h2 id="item-dialog-title" class="modal__title">項目追加</h2>
+      <label class="modal__field">
+        <span class="modal__label">項目名</span>
+        <input type="text" id="item-name" autocomplete="off" required>
+      </label>
+      <label class="modal__field">
+        <span class="modal__label">タグ（任意）</span>
+        <input type="text" id="item-tag" autocomplete="off" placeholder="例: SSR">
+      </label>
+      <fieldset class="modal__field">
+        <legend class="modal__label">チェック列</legend>
+        <div id="item-column-options" class="modal__checkbox-list"></div>
+      </fieldset>
+      <p id="item-error" class="modal__error" role="alert" hidden></p>
+      <div class="modal__actions">
+        <button type="button" class="button button--ghost" data-action="cancel-item">キャンセル</button>
+        <button type="submit" id="item-submit" class="button button--primary">追加</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="tag-dialog" class="modal modal--wide" aria-labelledby="tag-dialog-title">
+    <div class="modal__header">
+      <h2 id="tag-dialog-title" class="modal__title">タグ管理</h2>
+      <button type="button" class="button button--ghost modal__close" data-action="close-tag-dialog" aria-label="タグ管理を閉じる">✕</button>
+    </div>
+    <div class="modal__content">
+      <section class="tag-manager">
+        <header class="tag-manager__header">
+          <h3 class="tag-manager__subtitle">タグ一覧</h3>
+          <p class="tag-manager__hint">ドラッグ＆ドロップで並び替えできます</p>
+        </header>
+        <ul id="tag-list" class="tag-list" aria-live="polite"></ul>
+      </section>
+      <form id="tag-form" class="tag-form">
+        <label class="tag-form__field">
+          <span class="tag-form__label">タグ名を追加</span>
+          <input type="text" id="tag-name" placeholder="例: 緊急" autocomplete="off" required>
+        </label>
+        <div class="tag-form__actions">
+          <button type="submit" id="tag-submit" class="button button--primary">追加</button>
+          <button type="button" class="button button--ghost" data-action="close-tag-dialog">閉じる</button>
+        </div>
+      </form>
+      <p id="tag-error" class="modal__error" role="alert" hidden></p>
+    </div>
+  </dialog>
+
+  <script type="module" src="src/main.js"></script>
+</body>
+</html>

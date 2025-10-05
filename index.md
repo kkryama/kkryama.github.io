@@ -3,13 +3,17 @@ layout: default
 title: Home
 ---
 
-## Contents
+## Articles / 記事
 
 - [Tech](/posts.html) - 技術記事
-- [Creation](/creation.html) - 創作記事
 - [Diary](/diary.html) - 日記
 
-## About
+## Apps / アプリ
+
+- [Apps](/apps/) - アプリケーション一覧
+    - [Check Matrix](/apps/check-matrix/){:target="_blank"} - チェックマトリクス管理ツール
+
+## Others / その他
 
 - [Profile](/profile.html) - プロフィール
 
