@@ -1,10 +1,33 @@
-export const STORAGE_KEY = "checklist-boolean-data";
+export const STORAGE_KEY = "checklist-value-data";
+const LEGACY_STORAGE_KEYS = Object.freeze(["checklist-boolean-data"]);
+
+const VALUE_COLOR_PRESETS = Object.freeze({
+  "未着手": "#E5E7EB",
+  "進行中": "#FDE68A",
+  "完了": "#BBF7D0",
+  false: "#E5E7EB",
+  true: "#BBF7D0"
+});
+
+const DEFAULT_VALUE_COLOR = "#E5E7EB";
+
+const LEGACY_BOOLEAN_VALUE_SET = Object.freeze([
+  { id: "false", label: "false", color: VALUE_COLOR_PRESETS.false },
+  { id: "true", label: "true", color: VALUE_COLOR_PRESETS.true }
+]);
+
+const DEFAULT_VALUE_SET = Object.freeze([
+  { id: "not-started", label: "未着手", color: VALUE_COLOR_PRESETS["未着手"] },
+  { id: "in-progress", label: "進行中", color: VALUE_COLOR_PRESETS["進行中"] },
+  { id: "done", label: "完了", color: VALUE_COLOR_PRESETS["完了"] }
+]);
 
 export const DEFAULT_DATA = Object.freeze({
+  valueSet: DEFAULT_VALUE_SET,
   columns: [
-    { id: "col-progress", name: "進捗", type: "boolean", order: 1 },
-    { id: "col-review", name: "レビュー", type: "boolean", order: 2 },
-    { id: "col-done", name: "完了", type: "boolean", order: 3 }
+    { id: "col-progress", name: "進捗", type: "custom", order: 1 },
+    { id: "col-review", name: "レビュー", type: "custom", order: 2 },
+    { id: "col-done", name: "完了", type: "custom", order: 3 }
   ],
   tags: [
     { id: "tag-priority-high", label: "重要", order: 1, aliases: ["重要"] },
@@ -18,7 +41,7 @@ export const DEFAULT_DATA = Object.freeze({
       tag: "tag-priority-high",
       tags: ["tag-priority-high"],
       order: 1,
-      values: { "col-progress": true, "col-review": false, "col-done": false }
+      values: { "col-progress": "in-progress", "col-review": "not-started", "col-done": "not-started" }
     },
     {
       id: "item-bravo",
@@ -26,7 +49,7 @@ export const DEFAULT_DATA = Object.freeze({
       tag: "tag-priority-normal",
       tags: ["tag-priority-normal"],
       order: 2,
-      values: { "col-progress": true, "col-review": true, "col-done": false }
+      values: { "col-progress": "done", "col-review": "in-progress", "col-done": "not-started" }
     },
     {
       id: "item-charlie",
@@ -34,7 +57,7 @@ export const DEFAULT_DATA = Object.freeze({
       tag: "tag-priority-low",
       tags: ["tag-priority-low"],
       order: 3,
-      values: { "col-progress": false, "col-review": false, "col-done": false }
+      values: { "col-progress": "not-started", "col-review": "not-started", "col-done": "not-started" }
     }
   ]
 });
@@ -51,9 +74,236 @@ function ensureArray(value) {
   return Array.isArray(value) ? value : [];
 }
 
+function cloneValueSet(entries) {
+  return ensureArray(entries).map((entry) => ({
+    id: entry?.id ?? "",
+    label: entry?.label ?? "",
+    color: entry?.color ?? DEFAULT_VALUE_COLOR
+  }));
+}
+
+function isPlainObject(value) {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function normalizeHexColor(value) {
+  if (typeof value !== "string") {
+    return null;
+  }
+  const trimmed = value.trim();
+  if (/^#[0-9a-fA-F]{6}$/.test(trimmed)) {
+    return trimmed.toUpperCase();
+  }
+  return null;
+}
+
+function resolvePresetColor(label) {
+  if (typeof label !== "string") {
+    return null;
+  }
+  const preset = VALUE_COLOR_PRESETS[label] ?? VALUE_COLOR_PRESETS[label.trim()];
+  return normalizeHexColor(preset);
+}
+
+function normalizeValueColor(label, color) {
+  const provided = normalizeHexColor(color);
+  if (provided) {
+    return provided;
+  }
+  const preset = resolvePresetColor(label);
+  if (preset) {
+    return preset;
+  }
+  return DEFAULT_VALUE_COLOR;
+}
+
+function generateValueId(label, providedId, existingIds, index) {
+  const fallbackBase = `value-${index + 1}`;
+  const candidateBase = typeof providedId === "string" && providedId.trim().length > 0
+    ? slugify(providedId, fallbackBase)
+    : slugify(label, fallbackBase);
+  const base = candidateBase || fallbackBase;
+  return uniqueId(existingIds, base);
+}
+
+function normalizeValueSet(rawValueSet) {
+  const normalized = [];
+  const seenLabels = new Set();
+  const existingIds = new Set();
+  ensureArray(rawValueSet).forEach((entry, index) => {
+    let label = "";
+    let id = "";
+    let color;
+    if (isPlainObject(entry)) {
+      label = sanitizeLabel(entry.label ?? "");
+      id = typeof entry.id === "string" ? entry.id.trim() : "";
+      color = entry.color;
+    } else if (typeof entry === "string") {
+      label = sanitizeValueSetInput(entry);
+    } else if (entry === null || entry === undefined) {
+      label = "";
+    } else {
+      label = sanitizeValueSetInput(entry);
+    }
+
+    const duplicateKey = label.toLowerCase();
+    if (seenLabels.has(duplicateKey)) {
+      return;
+    }
+
+    const valueId = generateValueId(label, id, existingIds, normalized.length);
+    normalized.push({
+      id: valueId,
+      label,
+      color: normalizeValueColor(label, color)
+    });
+    seenLabels.add(duplicateKey);
+  });
+
+  if (normalized.length === 0) {
+    return cloneValueSet(DEFAULT_VALUE_SET);
+  }
+
+  return normalized;
+}
+
+function createValueSetMatcher(rawValueSet) {
+  const entries = Array.isArray(rawValueSet) && rawValueSet.length > 0 ? rawValueSet : cloneValueSet(DEFAULT_VALUE_SET);
+  const idMap = new Map();
+  const labelLookup = new Map();
+  entries.forEach((entry) => {
+    if (!entry || typeof entry.id !== "string") {
+      return;
+    }
+    idMap.set(entry.id, entry);
+    if (typeof entry.label === "string" && entry.label.trim()) {
+      const key = entry.label.trim().toLowerCase();
+      if (!labelLookup.has(key)) {
+        labelLookup.set(key, entry);
+      }
+    }
+  });
+  return {
+    entries,
+    idMap,
+    idSet: new Set(entries.map((entry) => entry.id)),
+    labelLookup
+  };
+}
+
+function getValueSetBooleanPair(matcher) {
+  if (!matcher || !Array.isArray(matcher.entries) || matcher.entries.length === 0) {
+    return { trueId: null, falseId: null };
+  }
+  const getByLabel = (label) => matcher.labelLookup.get(label);
+  const falseEntry = getByLabel("false") ?? matcher.entries[0] ?? null;
+  let trueEntry = getByLabel("true") ?? null;
+  if (!trueEntry) {
+    if (matcher.entries.length > 1) {
+      trueEntry = matcher.entries[1];
+    } else {
+      trueEntry = matcher.entries[0];
+    }
+  }
+  return {
+    trueId: trueEntry?.id ?? null,
+    falseId: falseEntry?.id ?? null,
+    trueEntry,
+    falseEntry
+  };
+}
+
+function isTruthyValue(value, booleanPair) {
+  if (value === booleanPair.trueId) {
+    return true;
+  }
+  if (value === booleanPair.falseId) {
+    return false;
+  }
+  return BOOLEAN_TRUE_VALUES.has(value);
+}
+
+function resolveValueSetEntry(value, matcher, booleanPair, fallback = null) {
+  if (value === undefined) {
+    return fallback;
+  }
+  if (value === null) {
+    return null;
+  }
+  if (!matcher) {
+    return fallback;
+  }
+  const lookupId = (candidate) => {
+    if (typeof candidate !== "string") {
+      return null;
+    }
+    const trimmed = candidate.trim();
+    if (!trimmed) {
+      return null;
+    }
+    if (matcher.idSet.has(trimmed)) {
+      return trimmed;
+    }
+    const labelEntry = matcher.labelLookup.get(trimmed.toLowerCase());
+    if (labelEntry) {
+      return labelEntry.id;
+    }
+    return null;
+  };
+
+  if (typeof value === "string") {
+    const matchedId = lookupId(value);
+    if (matchedId) {
+      return matchedId;
+    }
+    const normalized = value.trim().toLowerCase();
+    if (normalized === "false" || normalized === "0") {
+      return booleanPair.falseId ?? fallback;
+    }
+    if (normalized === "true" || normalized === "1") {
+      return booleanPair.trueId ?? fallback;
+    }
+  } else if (isPlainObject(value)) {
+    const matchedFromId = lookupId(value.id);
+    if (matchedFromId) {
+      return matchedFromId;
+    }
+    const matchedFromLabel = lookupId(value.label);
+    if (matchedFromLabel) {
+      return matchedFromLabel;
+    }
+  }
+
+  if (BOOLEAN_TRUE_VALUES.has(value)) {
+    return booleanPair.trueId ?? fallback;
+  }
+  if (value === false) {
+    return booleanPair.falseId ?? fallback;
+  }
+  if (typeof value === "number") {
+    if (value === 0) {
+      return booleanPair.falseId ?? fallback;
+    }
+    if (value === 1) {
+      return booleanPair.trueId ?? fallback;
+    }
+  }
+  return fallback;
+}
+
 function sanitizeLabel(value) {
   if (typeof value !== "string") return "";
   return value.trim();
+}
+
+function sanitizeValueSetInput(value) {
+  if (value === null || value === undefined) {
+    return "";
+  }
+  if (typeof value === "string") {
+    return value.trim();
+  }
+  return String(value).trim();
 }
 
 function slugify(value, fallback) {
@@ -234,7 +484,7 @@ function normalizeColumns(rawColumns) {
     const baseId = slugify(providedId || name, `column-${index + 1}`);
     const id = uniqueId(ids, baseId);
     const order = normalizeOrder(column?.order, index + 1);
-    columns.push({ id, name, order, type: "boolean" });
+    columns.push({ id, name, order, type: "custom" });
   });
   columns.sort((a, b) => {
     const orderDiff = a.order - b.order;
@@ -247,7 +497,7 @@ function normalizeColumns(rawColumns) {
   return columns;
 }
 
-function normalizeItems(rawItems, columns, tagDefinitions = []) {
+function normalizeItems(rawItems, columns, tagDefinitions = [], valueSet = DEFAULT_VALUE_SET) {
   const columnIds = columns.map((column) => column.id);
   const seenIds = new Set();
   const items = [];
@@ -257,6 +507,8 @@ function normalizeItems(rawItems, columns, tagDefinitions = []) {
     ? new Map(tagDefinitions.map((definition) => [definition.id, definition]))
     : null;
   const unmatchedTagMessages = new Set();
+  const matcher = createValueSetMatcher(valueSet);
+  const booleanPair = getValueSetBooleanPair(matcher);
 
   ensureArray(rawItems).forEach((item, index) => {
     const name = sanitizeLabel(item?.name ?? "");
@@ -316,7 +568,7 @@ function normalizeItems(rawItems, columns, tagDefinitions = []) {
     const values = {};
     columnIds.forEach((columnId) => {
       const raw = valuesInput[columnId];
-      values[columnId] = BOOLEAN_TRUE_VALUES.has(raw);
+      values[columnId] = resolveValueSetEntry(raw, matcher, booleanPair, null);
     });
 
     items.push({
@@ -382,17 +634,80 @@ function normalizeItems(rawItems, columns, tagDefinitions = []) {
   return items.map(({ __inputIndex: _ignored, ...item }) => item);
 }
 
+function coerceToValueSetData(data) {
+  const columns = ensureArray(data?.columns).map((column) => ({ ...column }));
+  const tags = ensureArray(data?.tags).map((tag) => ({ ...tag }));
+  let containsBooleanLikeValues = false;
+  const items = ensureArray(data?.items).map((item) => {
+    const valuesInput = item?.values && typeof item.values === "object" ? item.values : {};
+    const values = {};
+    Object.entries(valuesInput).forEach(([columnId, rawValue]) => {
+      if (rawValue === null || rawValue === undefined) {
+        values[columnId] = null;
+        return;
+      }
+      if (typeof rawValue === "string") {
+        values[columnId] = rawValue;
+        const normalized = rawValue.trim().toLowerCase();
+        if (normalized === "true" || normalized === "false") {
+          containsBooleanLikeValues = true;
+        }
+        return;
+      }
+      if (rawValue === true) {
+        values[columnId] = "true";
+        containsBooleanLikeValues = true;
+        return;
+      }
+      if (rawValue === false) {
+        values[columnId] = "false";
+        containsBooleanLikeValues = true;
+        return;
+      }
+      values[columnId] = String(rawValue);
+    });
+    return {
+      ...item,
+      values
+    };
+  });
+
+  let valueSet = Array.isArray(data?.valueSet)
+    ? data.valueSet.map((entry) => (isPlainObject(entry) ? { ...entry } : entry))
+    : null;
+  if (!valueSet || valueSet.length === 0) {
+    valueSet = containsBooleanLikeValues
+      ? cloneValueSet(LEGACY_BOOLEAN_VALUE_SET)
+      : cloneValueSet(DEFAULT_VALUE_SET);
+  }
+
+  const coercedColumns = columns.map((column, index) => ({
+    ...column,
+    type: "custom",
+    order: column?.order ?? index + 1
+  }));
+
+  return {
+    valueSet,
+    columns: coercedColumns,
+    tags,
+    items
+  };
+}
+
 export function normalizeData(data) {
   if (!data || typeof data !== "object") {
     throw new Error("データ形式が不正です");
   }
-  const columns = normalizeColumns(data.columns);
+  const coerced = coerceToValueSetData(data);
+  const valueSet = normalizeValueSet(coerced.valueSet);
+  const columns = normalizeColumns(coerced.columns);
   if (columns.length === 0) {
     throw new Error("列情報が存在しません");
   }
-  const tags = normalizeTagDefinitions(data.tags);
-  const items = normalizeItems(data.items, columns, tags);
-  return { columns, items, tags };
+  const tags = normalizeTagDefinitions(coerced.tags);
+  const items = normalizeItems(coerced.items, columns, tags, valueSet);
+  return { valueSet, columns, items, tags };
 }
 
 export function getVisibleColumns(allColumns, selectedColumnIds) {
@@ -443,7 +758,7 @@ export function buildMatrix(data, options = {}) {
       name: item.name,
       tag: item.tag ?? null,
       tagLabel: item.tag == null ? "" : tagById.get(item.tag)?.label ?? String(item.tag),
-      values: columns.map((column) => Boolean(item.values?.[column.id]))
+      values: columns.map((column) => (item.values?.[column.id] ?? null))
     })),
     itemOrder
   };
@@ -455,28 +770,76 @@ export function toJsonBlob(data) {
   return new Blob([json], { type: "application/json" });
 }
 
+function persistNormalizedDataToStorage(store, normalized) {
+  try {
+    store.setItem(STORAGE_KEY, JSON.stringify(normalized));
+  } catch (error) {
+    console.warn("ローカルストレージへの保存に失敗しました", error);
+  }
+}
+
+function removeLegacyStorageEntries(store) {
+  LEGACY_STORAGE_KEYS.forEach((legacyKey) => {
+    if (legacyKey !== STORAGE_KEY) {
+      try {
+        store.removeItem(legacyKey);
+      } catch (error) {
+        console.warn("レガシーキーの削除に失敗しました", error);
+      }
+    }
+  });
+}
+
 export function loadFromStorage(storage) {
   const store = storage ?? (typeof window !== "undefined" ? window.localStorage : null);
   if (!store) return null;
-  const stored = store.getItem(STORAGE_KEY);
-  if (!stored) return null;
-  try {
-    const parsed = JSON.parse(stored);
-    return normalizeData(parsed);
-  } catch (error) {
-    console.warn("ローカルストレージのデータを読み込めません", error);
-    return null;
+  const tryRead = (key) => {
+    const raw = store.getItem(key);
+    if (!raw) return null;
+    try {
+      const parsed = JSON.parse(raw);
+      const normalized = normalizeData(parsed);
+      return normalized;
+    } catch (error) {
+      console.warn(`ローカルストレージのデータを読み込めません (key: ${key})`, error);
+      try {
+        store.removeItem(key);
+      } catch (removeError) {
+        console.warn("破損したデータの削除に失敗しました", removeError);
+      }
+      return null;
+    }
+  };
+
+  const normalized = tryRead(STORAGE_KEY);
+  if (normalized) {
+    removeLegacyStorageEntries(store);
+    return normalized;
   }
+
+  for (const legacyKey of LEGACY_STORAGE_KEYS) {
+    if (legacyKey === STORAGE_KEY) continue;
+    const migrated = tryRead(legacyKey);
+    if (migrated) {
+      persistNormalizedDataToStorage(store, migrated);
+      try {
+        store.removeItem(legacyKey);
+      } catch (error) {
+        console.warn("レガシーキーの削除に失敗しました", error);
+      }
+      return migrated;
+    }
+  }
+
+  return null;
 }
 
 export function saveToStorage(data, storage) {
   const store = storage ?? (typeof window !== "undefined" ? window.localStorage : null);
   if (!store) return;
-  try {
-    store.setItem(STORAGE_KEY, JSON.stringify(normalizeData(data)));
-  } catch (error) {
-    console.warn("ローカルストレージへの保存に失敗しました", error);
-  }
+  const normalized = normalizeData(data);
+  persistNormalizedDataToStorage(store, normalized);
+  removeLegacyStorageEntries(store);
 }
 
 export function clearStorage(storage) {
@@ -487,6 +850,14 @@ export function clearStorage(storage) {
   } catch (error) {
     console.warn("ローカルストレージの削除に失敗しました", error);
   }
+  LEGACY_STORAGE_KEYS.forEach((legacyKey) => {
+    if (legacyKey === STORAGE_KEY) return;
+    try {
+      store.removeItem(legacyKey);
+    } catch (error) {
+      console.warn("レガシーキーの削除に失敗しました", error);
+    }
+  });
 }
 
 export function getDefaultData() {
@@ -505,13 +876,18 @@ export function addColumn(data, columnName) {
   const existingIds = new Set(normalized.columns.map((column) => column.id));
   const id = uniqueId(existingIds, slugify(name, "column"));
   const order = (normalized.columns.at(-1)?.order ?? normalized.columns.length) + 1;
-  const column = { id, name, order, type: "boolean" };
+  const column = { id, name, order, type: "custom" };
   const columns = [...normalized.columns, column];
   const items = normalized.items.map((item) => ({
     ...item,
-    values: { ...item.values, [id]: false }
+    values: { ...item.values, [id]: null }
   }));
-  return normalizeData({ columns, items, tags: normalized.tags });
+  return normalizeData({
+    valueSet: normalized.valueSet,
+    columns,
+    items,
+    tags: normalized.tags
+  });
 }
 
 export function renameColumn(data, columnId, nextName) {
@@ -534,7 +910,12 @@ export function renameColumn(data, columnId, nextName) {
   const columns = normalized.columns.map((column) =>
     column.id === id ? { ...column, name } : column
   );
-  return normalizeData({ columns, items: normalized.items, tags: normalized.tags });
+  return normalizeData({
+    valueSet: normalized.valueSet,
+    columns,
+    items: normalized.items,
+    tags: normalized.tags
+  });
 }
 
 export function removeColumn(data, columnId) {
@@ -555,7 +936,12 @@ export function removeColumn(data, columnId) {
     const { [id]: _removed, ...rest } = item.values;
     return { ...item, values: rest };
   });
-  return normalizeData({ columns, items, tags: normalized.tags });
+  return normalizeData({
+    valueSet: normalized.valueSet,
+    columns,
+    items,
+    tags: normalized.tags
+  });
 }
 
 export function addItem(data, input) {
@@ -577,12 +963,23 @@ export function addItem(data, input) {
   const order = normalizeOrder(input?.order, normalized.items.length + 1);
   const valuesInput = input?.values && typeof input.values === "object" ? input.values : {};
   const selectedColumns = new Set(ensureArray(input?.columns));
+  const matcher = createValueSetMatcher(normalized.valueSet);
+  const booleanPair = getValueSetBooleanPair(matcher);
+  const firstValueId = matcher.entries[0]?.id ?? null;
   const values = {};
   normalized.columns.forEach((column) => {
     if (column.id in valuesInput) {
-      values[column.id] = BOOLEAN_TRUE_VALUES.has(valuesInput[column.id]);
+      values[column.id] = resolveValueSetEntry(valuesInput[column.id], matcher, booleanPair, null);
+      return;
+    }
+    if (selectedColumns.has(column.id)) {
+      if (firstValueId == null) {
+        values[column.id] = null;
+      } else {
+        values[column.id] = resolveValueSetEntry(firstValueId, matcher, booleanPair, firstValueId);
+      }
     } else {
-      values[column.id] = selectedColumns.has(column.id);
+      values[column.id] = null;
     }
   });
   const item = {
@@ -593,7 +990,12 @@ export function addItem(data, input) {
     tags: allTags,
     values
   };
-  return normalizeData({ columns: normalized.columns, items: [...normalized.items, item], tags: normalized.tags });
+  return normalizeData({
+    valueSet: normalized.valueSet,
+    columns: normalized.columns,
+    items: [...normalized.items, item],
+    tags: normalized.tags
+  });
 }
 
 export function updateItem(data, itemId, updates) {
@@ -616,17 +1018,37 @@ export function updateItem(data, itemId, updates) {
   const primaryTag = normalizeTag(updates?.tag ?? tags[0] ?? existing.tag ?? null);
   const allTags = primaryTag ? [primaryTag, ...tags.filter((tag) => tag !== primaryTag)] : tags;
   let values = { ...existing.values };
+  const matcher = createValueSetMatcher(normalized.valueSet);
+  const booleanPair = getValueSetBooleanPair(matcher);
   if (updates?.values && typeof updates.values === "object") {
     normalized.columns.forEach((column) => {
       if (column.id in updates.values) {
-        values[column.id] = BOOLEAN_TRUE_VALUES.has(updates.values[column.id]);
+        values[column.id] = resolveValueSetEntry(
+          updates.values[column.id],
+          matcher,
+          booleanPair,
+          values[column.id] ?? null
+        );
       }
     });
   }
   if (updates?.columns) {
     const selected = new Set(ensureArray(updates.columns));
+    const firstValueId = matcher.entries[0]?.id ?? null;
     normalized.columns.forEach((column) => {
-      values[column.id] = selected.has(column.id);
+      if (selected.has(column.id)) {
+        const current = values[column.id];
+        const normalizedValue = resolveValueSetEntry(current, matcher, booleanPair, null);
+        if (normalizedValue != null) {
+          values[column.id] = normalizedValue;
+        } else if (firstValueId != null) {
+          values[column.id] = resolveValueSetEntry(firstValueId, matcher, booleanPair, firstValueId);
+        } else {
+          values[column.id] = null;
+        }
+      } else {
+        values[column.id] = null;
+      }
     });
   }
   const order = normalizeOrder(updates?.order, existing.order);
@@ -639,7 +1061,12 @@ export function updateItem(data, itemId, updates) {
     values
   };
   const items = normalized.items.map((item, index) => (index === targetIndex ? nextItem : item));
-  return normalizeData({ columns: normalized.columns, items, tags: normalized.tags });
+  return normalizeData({
+    valueSet: normalized.valueSet,
+    columns: normalized.columns,
+    items,
+    tags: normalized.tags
+  });
 }
 
 export function removeItem(data, itemId) {
@@ -652,7 +1079,12 @@ export function removeItem(data, itemId) {
     throw new Error("削除対象の項目が見つかりません");
   }
   const items = normalized.items.filter((item) => item.id !== id);
-  return normalizeData({ columns: normalized.columns, items, tags: normalized.tags });
+  return normalizeData({
+    valueSet: normalized.valueSet,
+    columns: normalized.columns,
+    items,
+    tags: normalized.tags
+  });
 }
 
 export function addTag(data, label) {
@@ -673,7 +1105,12 @@ export function addTag(data, label) {
     aliases: [name]
   };
   const tags = [...normalized.tags, tag];
-  return normalizeData({ columns: normalized.columns, items: normalized.items, tags });
+  return normalizeData({
+    valueSet: normalized.valueSet,
+    columns: normalized.columns,
+    items: normalized.items,
+    tags
+  });
 }
 
 export function updateTag(data, tagId, nextLabel) {
@@ -699,7 +1136,12 @@ export function updateTag(data, tagId, nextLabel) {
   const tags = normalized.tags.map((tag, currentIndex) =>
     currentIndex === index ? { ...tag, label, aliases: Array.from(aliasSet) } : tag
   );
-  return normalizeData({ columns: normalized.columns, items: normalized.items, tags });
+  return normalizeData({
+    valueSet: normalized.valueSet,
+    columns: normalized.columns,
+    items: normalized.items,
+    tags
+  });
 }
 
 export function deleteTag(data, tagId) {
@@ -722,7 +1164,12 @@ export function deleteTag(data, tagId) {
       tags: filteredTags
     };
   });
-  return normalizeData({ columns: normalized.columns, items, tags });
+  return normalizeData({
+    valueSet: normalized.valueSet,
+    columns: normalized.columns,
+    items,
+    tags
+  });
 }
 
 export function reorderTags(data, fromIndex, toIndex) {
@@ -749,5 +1196,124 @@ export function reorderTags(data, fromIndex, toIndex) {
   const [moved] = tags.splice(from, 1);
   tags.splice(target, 0, moved);
   reassignTagOrders(tags);
-  return normalizeData({ columns: normalized.columns, items: normalized.items, tags });
+  return normalizeData({
+    valueSet: normalized.valueSet,
+    columns: normalized.columns,
+    items: normalized.items,
+    tags
+  });
+}
+
+export function addValueSetEntry(data, entry) {
+  const normalized = normalizeData(data);
+  const label = sanitizeValueSetInput(isPlainObject(entry) ? entry.label ?? "" : entry);
+  if (normalized.valueSet.some((candidate) => candidate.label === label)) {
+    throw new Error("同じ値が既に存在します");
+  }
+  const existingIds = new Set(normalized.valueSet.map((candidate) => candidate.id));
+  const providedId = isPlainObject(entry) ? entry.id : "";
+  const colorInput = isPlainObject(entry) ? entry.color : null;
+  const id = generateValueId(label, providedId, existingIds, normalized.valueSet.length);
+  const color = normalizeValueColor(label, colorInput);
+  const nextValueSet = [...normalized.valueSet, { id, label, color }];
+  return normalizeData({
+    valueSet: nextValueSet,
+    columns: normalized.columns,
+    items: normalized.items,
+    tags: normalized.tags
+  });
+}
+
+export function updateValueSetEntry(data, index, nextEntry) {
+  const normalized = normalizeData(data);
+  const targetIndex = Number(index);
+  if (!Number.isInteger(targetIndex)) {
+    throw new Error("値の指定が不正です");
+  }
+  if (targetIndex < 0 || targetIndex >= normalized.valueSet.length) {
+    throw new Error("指定した値が見つかりません");
+  }
+  const currentEntry = normalized.valueSet[targetIndex];
+  const nextLabel = sanitizeValueSetInput(isPlainObject(nextEntry) ? nextEntry.label ?? currentEntry.label : nextEntry);
+  if (normalized.valueSet.some((value, currentIndex) => currentIndex !== targetIndex && value.label === nextLabel)) {
+    throw new Error("同じ値が既に存在します");
+  }
+  const colorInput = isPlainObject(nextEntry) ? nextEntry.color ?? currentEntry.color : currentEntry.color;
+  const nextColor = normalizeValueColor(nextLabel, colorInput);
+  if (currentEntry.label === nextLabel && currentEntry.color === nextColor) {
+    return normalized;
+  }
+  const nextValueSet = normalized.valueSet.map((value, currentIndex) =>
+    currentIndex === targetIndex ? { ...value, label: nextLabel, color: nextColor } : value
+  );
+  return normalizeData({
+    valueSet: nextValueSet,
+    columns: normalized.columns,
+    items: normalized.items,
+    tags: normalized.tags
+  });
+}
+
+export function removeValueSetEntry(data, index) {
+  const normalized = normalizeData(data);
+  const targetIndex = Number(index);
+  if (!Number.isInteger(targetIndex)) {
+    throw new Error("値の指定が不正です");
+  }
+  if (targetIndex < 0 || targetIndex >= normalized.valueSet.length) {
+    throw new Error("指定した値が見つかりません");
+  }
+  if (normalized.valueSet.length <= 1) {
+    throw new Error("値セットには少なくとも1つの値が必要です");
+  }
+  const removedEntry = normalized.valueSet[targetIndex];
+  const nextValueSet = normalized.valueSet.filter((_, currentIndex) => currentIndex !== targetIndex);
+  const items = normalized.items.map((item) => {
+    let changed = false;
+    const values = { ...item.values };
+    Object.keys(values).forEach((columnId) => {
+      if (values[columnId] === removedEntry.id) {
+        values[columnId] = null;
+        changed = true;
+      }
+    });
+    return changed ? { ...item, values } : item;
+  });
+  return normalizeData({
+    valueSet: nextValueSet,
+    columns: normalized.columns,
+    items,
+    tags: normalized.tags
+  });
+}
+
+export function reorderValueSet(data, fromIndex, toIndex) {
+  const normalized = normalizeData(data);
+  const values = [...normalized.valueSet];
+  const length = values.length;
+  const from = Number(fromIndex);
+  let target = Number(toIndex);
+  if (!Number.isInteger(from) || !Number.isInteger(target)) {
+    throw new Error("並び替えの指定が不正です");
+  }
+  if (from < 0 || from >= length) {
+    throw new Error("移動元のインデックスが範囲外です");
+  }
+  if (target < 0) {
+    target = 0;
+  }
+  if (target >= length) {
+    target = length - 1;
+  }
+  if (from === target) {
+    return normalized;
+  }
+  const [moved] = values.splice(from, 1);
+  values.splice(target, 0, moved);
+  return normalizeData({
+    valueSet: values,
+    columns: normalized.columns,
+    items: normalized.items,
+    tags: normalized.tags
+  });
 }

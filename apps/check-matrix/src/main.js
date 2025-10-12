@@ -16,10 +16,34 @@ import {
   addTag,
   updateTag,
   deleteTag,
-  reorderTags
+  reorderTags,
+  addValueSetEntry,
+  updateValueSetEntry,
+  removeValueSetEntry,
+  reorderValueSet
 } from "./dataUtils.js";
+import { createCsvStringFromTableData } from "./csvUtils.js";
 
 const UNTAGGED_TAG_VALUE = "__untagged__";
+const DEFAULT_VALUE_COLOR = "#E5E7EB";
+
+const VALUE_SET_COLOR_PRESETS = [
+  { value: "#E5E7EB", name: "ライトグレー" },
+  { value: "#FDE68A", name: "ライトイエロー" },
+  { value: "#BBF7D0", name: "ライトグリーン" },
+  { value: "#BFDBFE", name: "ライトブルー" },
+  { value: "#FBCFE8", name: "ライトピンク" },
+  { value: "#FECACA", name: "サーモン" },
+  { value: "#DDD6FE", name: "ラベンダー" },
+  { value: "#F5D0C5", name: "アプリコット" }
+].map((preset) => ({
+  value: normalizeHexColor(preset.value) ?? DEFAULT_VALUE_COLOR,
+  name: preset.name
+}));
+
+const DEFAULT_VALUE_SET_COLOR = VALUE_SET_COLOR_PRESETS[0]?.value ?? DEFAULT_VALUE_COLOR;
+const DEFAULT_TEXT_COLOR = "var(--text-color)";
+const CONTRAST_TEXT_COLOR = "#FFFFFF";
 
 const state = {
   data: DEFAULT_DATA,
@@ -27,10 +51,332 @@ const state = {
   selectedTags: null,
   selectedItemIds: null,
   pendingFocus: null,
-  tagEditingId: null
+  tagEditingId: null,
+  valueSetEditingIndex: null,
+  valueSetPendingFocusIndex: null,
+  valueSetFormColor: DEFAULT_VALUE_SET_COLOR
 };
 
+function hexToRgbChannels(value) {
+  const normalized = normalizeHexColor(value);
+  if (!normalized) {
+    return null;
+  }
+  const r = parseInt(normalized.slice(1, 3), 16);
+  const g = parseInt(normalized.slice(3, 5), 16);
+  const b = parseInt(normalized.slice(5, 7), 16);
+  if ([r, g, b].some((channel) => Number.isNaN(channel))) {
+    return null;
+  }
+  return { r, g, b };
+}
+
+function srgbChannelToLinear(channel) {
+  const normalized = channel / 255;
+  if (normalized <= 0.03928) {
+    return normalized / 12.92;
+  }
+  return Math.pow((normalized + 0.055) / 1.055, 2.4);
+}
+
+function getRelativeLuminance(hexColor) {
+  const channels = hexToRgbChannels(hexColor);
+  if (!channels) {
+    return null;
+  }
+  const r = srgbChannelToLinear(channels.r);
+  const g = srgbChannelToLinear(channels.g);
+  const b = srgbChannelToLinear(channels.b);
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+
+function getReadableTextColor(backgroundColor) {
+  const luminance = getRelativeLuminance(backgroundColor);
+  if (luminance == null) {
+    return DEFAULT_TEXT_COLOR;
+  }
+  return luminance < 0.55 ? CONTRAST_TEXT_COLOR : DEFAULT_TEXT_COLOR;
+}
+
+function getNormalizedColor(value) {
+  return normalizeHexColor(value) ?? DEFAULT_VALUE_COLOR;
+}
+
+function createCellColorStyle(entry) {
+  if (!entry) {
+    return null;
+  }
+  const backgroundColor = getNormalizedColor(entry.color);
+  return {
+    backgroundColor,
+    textColor: getReadableTextColor(backgroundColor)
+  };
+}
+
+function findColorPreset(color) {
+  const normalized = normalizeHexColor(color);
+  if (!normalized) {
+    return null;
+  }
+  return VALUE_SET_COLOR_PRESETS.find((preset) => preset.value === normalized) ?? null;
+}
+
+function getEffectiveValueSetColor(color) {
+  const normalized = normalizeHexColor(color);
+  if (normalized) {
+    return normalized;
+  }
+  return DEFAULT_VALUE_SET_COLOR;
+}
+
+function createColorOptionElement(name, preset, checked) {
+  const label = document.createElement("label");
+  label.classList.add("value-set-color-option");
+  label.title = `${preset.name} (${preset.value})`;
+
+  const input = document.createElement("input");
+  input.type = "radio";
+  input.name = name;
+  input.value = preset.value;
+  input.classList.add("value-set-color-option__radio");
+  if (checked) {
+    input.checked = true;
+  }
+  input.setAttribute("aria-label", `${preset.name} (${preset.value})`);
+
+  const swatch = document.createElement("span");
+  swatch.classList.add("value-set-color-option__swatch");
+  swatch.style.backgroundColor = preset.value;
+  swatch.setAttribute("aria-hidden", "true");
+
+  const nameElement = document.createElement("span");
+  nameElement.classList.add("value-set-color-option__name");
+  nameElement.textContent = preset.name;
+
+  const code = document.createElement("span");
+  code.classList.add("value-set-color-option__code");
+  code.textContent = preset.value;
+
+  label.appendChild(input);
+  label.appendChild(swatch);
+  label.appendChild(nameElement);
+  label.appendChild(code);
+  return label;
+}
+
+function normalizeHexColor(value) {
+  if (typeof value !== "string") {
+    return null;
+  }
+  const trimmed = value.trim();
+  if (/^#[0-9a-fA-F]{6}$/.test(trimmed)) {
+    return trimmed.toUpperCase();
+  }
+  return null;
+}
+
+function toValueSetEntry(entry, index) {
+  if (entry && typeof entry === "object" && !Array.isArray(entry)) {
+    const id = typeof entry.id === "string" && entry.id.trim() ? entry.id.trim() : `value-${index + 1}`;
+    const label = typeof entry.label === "string" ? entry.label : "";
+    const color = normalizeHexColor(entry.color) ?? DEFAULT_VALUE_COLOR;
+    return { id, label, color };
+  }
+  const label = typeof entry === "string" ? entry : String(entry ?? "");
+  return {
+    id: `value-${index + 1}`,
+    label,
+    color: DEFAULT_VALUE_COLOR
+  };
+}
+
+function getValueSetEntries() {
+  const raw = Array.isArray(state.data?.valueSet) ? state.data.valueSet : [];
+  if (raw.length === 0) {
+    return Array.isArray(DEFAULT_DATA?.valueSet) ? DEFAULT_DATA.valueSet : [];
+  }
+  if (raw.every((entry) => entry && typeof entry.id === "string" && entry.id.trim())) {
+    return raw;
+  }
+  return raw.map((entry, index) => toValueSetEntry(entry, index));
+}
+
+function getValueSetIds() {
+  return getValueSetEntries().map((entry, index) => {
+    if (entry && typeof entry.id === "string" && entry.id.trim()) {
+      return entry.id;
+    }
+    return `value-${index + 1}`;
+  });
+}
+
+function getValueSetEntryById(id) {
+  if (typeof id !== "string") {
+    return null;
+  }
+  const trimmed = id.trim();
+  if (!trimmed) {
+    return null;
+  }
+  return getValueSetEntries().find((entry) => entry.id === trimmed) ?? null;
+}
+
+function getValueSetEntryByLabel(label) {
+  if (typeof label !== "string") {
+    return null;
+  }
+  const trimmed = label.trim();
+  const entries = getValueSetEntries();
+  if (!trimmed) {
+    return entries.find((entry) => entry.label === "") ?? null;
+  }
+  return (
+    entries.find((entry) => entry.label === trimmed) ??
+    entries.find((entry) => entry.label?.toLowerCase() === trimmed.toLowerCase()) ??
+    null
+  );
+}
+
+function resolveValueSetEntry(value) {
+  if (value == null) {
+    return null;
+  }
+  if (typeof value === "object" && !Array.isArray(value) && typeof value.id === "string") {
+    return getValueSetEntryById(value.id) ?? null;
+  }
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    return getValueSetEntryById(trimmed) ?? getValueSetEntryByLabel(trimmed);
+  }
+  if (typeof value === "number") {
+    return resolveValueSetEntry(String(value));
+  }
+  if (typeof value === "boolean") {
+    return resolveValueSetEntry(value ? "true" : "false");
+  }
+  return null;
+}
+
+function getValueSetBooleanPairFromState() {
+  const entries = getValueSetEntries();
+  const falseEntry = getValueSetEntryByLabel("false") ?? entries[0] ?? null;
+  let trueEntry = getValueSetEntryByLabel("true") ?? null;
+  if (!trueEntry) {
+    if (entries.length > 1) {
+      trueEntry = entries[1];
+    } else {
+      trueEntry = entries[0] ?? null;
+    }
+  }
+  return {
+    trueEntry,
+    falseEntry,
+    trueId: trueEntry?.id ?? null,
+    falseId: falseEntry?.id ?? null
+  };
+}
+
+function isCellActive(value) {
+  if (value == null) {
+    return false;
+  }
+  const { trueId, falseId } = getValueSetBooleanPairFromState();
+  const entry = resolveValueSetEntry(value);
+  if (entry) {
+    if (trueId && entry.id === trueId) {
+      return true;
+    }
+    if (falseId && entry.id === falseId) {
+      return false;
+    }
+    return true;
+  }
+  if (typeof value === "boolean") {
+    return value;
+  }
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    if (normalized === "true" || normalized === "1") {
+      return true;
+    }
+    if (normalized === "false" || normalized === "0" || normalized === "") {
+      return false;
+    }
+  }
+  if (typeof value === "number") {
+    if (value === 1) return true;
+    if (value === 0) return false;
+  }
+  return true;
+}
+
+function getNextValue(currentValue) {
+  const ids = getValueSetIds();
+  if (ids.length === 0) {
+    return null;
+  }
+  if (currentValue == null) {
+    return ids[0] ?? null;
+  }
+  const resolved = resolveValueSetEntry(currentValue);
+  const currentId =
+    resolved?.id ??
+    (typeof currentValue === "string" ? currentValue.trim() : String(currentValue));
+  const currentIndex = ids.indexOf(currentId);
+  if (currentIndex === -1) {
+    return ids[0] ?? null;
+  }
+  if (currentIndex === ids.length - 1) {
+    return null;
+  }
+  return ids[currentIndex + 1];
+}
+
+function getCellAriaLabel(columnName, value) {
+  if (value == null) {
+    return `${columnName}: 未設定`;
+  }
+  const entry = resolveValueSetEntry(value);
+  if (!entry) {
+    if (value === "") {
+      return `${columnName}: 空文字`;
+    }
+    return `${columnName}: ${value}`;
+  }
+  const label = entry.label === "" ? "空文字" : entry.label;
+  return `${columnName}: ${label}`;
+}
+
+function getValueSetDisplayLabel(value) {
+  const entry = resolveValueSetEntry(value);
+  if (!entry) {
+    if (value === "") {
+      return "空文字";
+    }
+    if (value == null) {
+      return "";
+    }
+    return typeof value === "string" ? value : String(value);
+  }
+  return entry.label === "" ? "空文字" : entry.label;
+}
+
+function getValueSetAriaDescription(value) {
+  const entry = resolveValueSetEntry(value);
+  if (!entry) {
+    if (value === "") {
+      return "空文字 (空文字列)";
+    }
+    return value == null ? "未設定" : String(value);
+  }
+  return entry.label === "" ? "空文字 (空文字列)" : entry.label;
+}
+
 const tagDragState = {
+  sourceIndex: -1
+};
+
+const valueSetDragState = {
   sourceIndex: -1
 };
 
@@ -38,6 +384,7 @@ const elements = {
   fileInput: document.querySelector("#json-file"),
   loadButton: document.querySelector("#load-json"),
   saveButton: document.querySelector("#save-json"),
+  exportCsvButton: document.querySelector("#export-csv"),
   filterToggle: document.querySelector("#toggle-filter"),
   filterPanel: document.querySelector("#column-filter"),
   columnCheckboxes: document.querySelector("#column-checkboxes"),
@@ -46,6 +393,7 @@ const elements = {
   resetButton: document.querySelector("#reset-data"),
   addItemButton: document.querySelector("#add-item"),
   addColumnButton: document.querySelector("#add-column"),
+  manageValueSetButton: document.querySelector("#manage-value-set"),
   tagFilterToggle: document.querySelector("#toggle-tag-filter"),
   tagFilterPanel: document.querySelector("#tag-filter"),
   tagCheckboxes: document.querySelector("#tag-checkboxes"),
@@ -82,8 +430,60 @@ const elements = {
   tagNameInput: document.querySelector("#tag-name"),
   tagSubmitButton: document.querySelector("#tag-submit"),
   tagDialogError: document.querySelector("#tag-error"),
-  tagDialogCloseButtons: document.querySelectorAll("[data-action='close-tag-dialog']")
+  tagDialogCloseButtons: document.querySelectorAll("[data-action='close-tag-dialog']"),
+  valueSetDialog: document.querySelector("#value-set-dialog"),
+  valueSetList: document.querySelector("#value-set-list"),
+  valueSetForm: document.querySelector("#value-set-form"),
+  valueSetInput: document.querySelector("#value-set-input"),
+  valueSetColorOptions: document.querySelector("#value-set-color-options"),
+  valueSetSubmitButton: document.querySelector("#value-set-submit"),
+  valueSetError: document.querySelector("#value-set-error"),
+  valueSetDialogCloseButtons: document.querySelectorAll("[data-action='close-value-set-dialog']")
 };
+
+function ensureValueSetElements() {
+  if (!elements.manageValueSetButton) {
+    elements.manageValueSetButton = document.querySelector("#manage-value-set");
+  }
+  if (!elements.valueSetDialog) {
+    elements.valueSetDialog = document.querySelector("#value-set-dialog");
+  }
+  if (!elements.valueSetList) {
+    elements.valueSetList = document.querySelector("#value-set-list");
+  }
+  if (!elements.valueSetForm) {
+    elements.valueSetForm = document.querySelector("#value-set-form");
+  }
+  if (!elements.valueSetInput) {
+    elements.valueSetInput = document.querySelector("#value-set-input");
+  }
+  if (!elements.valueSetColorOptions) {
+    elements.valueSetColorOptions = document.querySelector("#value-set-color-options");
+  }
+  if (!elements.valueSetError) {
+    elements.valueSetError = document.querySelector("#value-set-error");
+  }
+  if (!elements.valueSetDialogCloseButtons || elements.valueSetDialogCloseButtons.length === 0) {
+    elements.valueSetDialogCloseButtons = document.querySelectorAll("[data-action='close-value-set-dialog']");
+  }
+}
+
+function renderValueSetFormColorOptions(selectedColor = DEFAULT_VALUE_SET_COLOR) {
+  ensureValueSetElements();
+  if (!elements.valueSetColorOptions) return;
+  const container = elements.valueSetColorOptions;
+  container.innerHTML = "";
+  const groupName = "value-set-form-color";
+  const normalizedSelection = getEffectiveValueSetColor(selectedColor);
+  VALUE_SET_COLOR_PRESETS.forEach((preset) => {
+    const option = createColorOptionElement(groupName, preset, preset.value === normalizedSelection);
+    const input = option.querySelector("input");
+    if (input instanceof HTMLInputElement) {
+      input.dataset.role = "value-set-form-color";
+    }
+    container.appendChild(option);
+  });
+}
 
 function createPanelController(toggle, panel) {
   if (!toggle || !panel) {
@@ -159,6 +559,7 @@ function safeLoadFromStorage() {
 }
 
 function bindEvents() {
+  ensureValueSetElements();
   elements.loadButton.addEventListener("click", () => {
     elements.fileInput.value = "";
     elements.fileInput.click();
@@ -166,6 +567,9 @@ function bindEvents() {
 
   elements.fileInput.addEventListener("change", handleFileSelection);
   elements.saveButton.addEventListener("click", handleSaveJson);
+  if (elements.exportCsvButton) {
+    elements.exportCsvButton.addEventListener("click", handleExportCsv);
+  }
   if (elements.resetButton) {
     elements.resetButton.addEventListener("click", handleResetData);
   }
@@ -252,8 +656,19 @@ function bindEvents() {
     elements.manageTagsButton.addEventListener("click", openTagDialog);
   }
 
+  if (elements.manageValueSetButton) {
+    elements.manageValueSetButton.addEventListener("click", openValueSetDialog);
+  }
+
   if (elements.tagForm) {
     elements.tagForm.addEventListener("submit", handleTagFormSubmit);
+  }
+
+  if (elements.valueSetForm) {
+    elements.valueSetForm.addEventListener("submit", handleValueSetFormSubmit);
+    if (elements.valueSetColorOptions) {
+      elements.valueSetColorOptions.addEventListener("change", handleValueSetFormColorChange);
+    }
   }
 
   if (elements.tagDialogCloseButtons && elements.tagDialogCloseButtons.length > 0) {
@@ -265,10 +680,26 @@ function bindEvents() {
     });
   }
 
+  if (elements.valueSetDialogCloseButtons && elements.valueSetDialogCloseButtons.length > 0) {
+    elements.valueSetDialogCloseButtons.forEach((button) => {
+      button.addEventListener("click", (event) => {
+        event.preventDefault();
+        closeValueSetDialog();
+      });
+    });
+  }
+
   if (elements.tagDialog) {
     elements.tagDialog.addEventListener("cancel", (event) => {
       event.preventDefault();
       closeTagDialog();
+    });
+  }
+
+  if (elements.valueSetDialog) {
+    elements.valueSetDialog.addEventListener("cancel", (event) => {
+      event.preventDefault();
+      closeValueSetDialog();
     });
   }
 
@@ -279,6 +710,15 @@ function bindEvents() {
     elements.tagList.addEventListener("dragleave", handleTagDragLeave);
     elements.tagList.addEventListener("drop", handleTagDrop);
     elements.tagList.addEventListener("dragend", handleTagDragEnd);
+  }
+
+  if (elements.valueSetList) {
+    elements.valueSetList.addEventListener("click", handleValueSetListClick);
+    elements.valueSetList.addEventListener("dragstart", handleValueSetDragStart);
+    elements.valueSetList.addEventListener("dragover", handleValueSetDragOver);
+    elements.valueSetList.addEventListener("dragleave", handleValueSetDragLeave);
+    elements.valueSetList.addEventListener("drop", handleValueSetDrop);
+    elements.valueSetList.addEventListener("dragend", handleValueSetDragEnd);
   }
 }
 
@@ -292,39 +732,23 @@ function handleFileSelection(event) {
       const normalized = normalizeData(parsed);
       state.data = normalized;
       state.selectedColumnIds = null;
-  state.selectedTags = null;
-  state.selectedItemIds = null;
-  state.pendingFocus = null;
-  state.tagEditingId = null;
+      state.selectedTags = null;
+      state.selectedItemIds = null;
+      state.pendingFocus = null;
+      state.tagEditingId = null;
       saveToStorage(state.data);
-  closeAllPanels();
+      closeAllPanels();
       renderAll();
     } catch (error) {
       console.error(error);
       alert("JSONファイルの読み込みに失敗しました。形式を確認してください。");
     }
   };
-  reader.onerror = () => {
-    alert("ファイルの読み込み中にエラーが発生しました。");
-  };
-  reader.readAsText(file, "utf-8");
-}
-
-function handleSaveJson() {
-  try {
-    const blob = toJsonBlob(state.data);
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = "checklist-boolean.json";
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    URL.revokeObjectURL(url);
-  } catch (error) {
+  reader.onerror = (error) => {
     console.error(error);
-    alert("JSONの保存に失敗しました。");
-  }
+    alert("ファイルの読み込み中にエラーが発生しました");
+  };
+  reader.readAsText(file);
 }
 
 function handleResetData() {
@@ -341,6 +765,48 @@ function handleResetData() {
   state.tagEditingId = null;
   closeAllPanels();
   renderAll();
+}
+
+function handleSaveJson() {
+  try {
+    const normalized = normalizeData(state.data);
+    const blob = toJsonBlob(normalized);
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+    anchor.href = url;
+    anchor.download = `check-matrix-${timestamp}.json`;
+    document.body.appendChild(anchor);
+    anchor.click();
+    document.body.removeChild(anchor);
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+  } catch (error) {
+    console.error("JSONの保存に失敗しました", error);
+    alert("JSONの保存に失敗しました。時間を置いて再度お試しください。\n詳細はコンソールを確認してください。");
+  }
+}
+
+function handleExportCsv(event) {
+  if (event?.preventDefault) {
+    event.preventDefault();
+  }
+  try {
+    const tableData = getVisibleTableData();
+    const csvContent = createCsvStringFromTableData(tableData);
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+    anchor.href = url;
+    anchor.download = `check-matrix-${timestamp}.csv`;
+    document.body.appendChild(anchor);
+    anchor.click();
+    document.body.removeChild(anchor);
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+  } catch (error) {
+    console.error("CSVの出力に失敗しました", error);
+    alert("CSVの出力に失敗しました。時間を置いて再度お試しください。\n詳細はコンソールを確認してください。");
+  }
 }
 
 function isAllColumnsSelected() {
@@ -385,6 +851,11 @@ function renderAll() {
   renderTable();
   if (elements.tagDialog && elements.tagDialog.open) {
     renderTagList();
+  }
+  ensureValueSetElements();
+  if (elements.valueSetDialog && elements.valueSetDialog.open) {
+    renderValueSetList();
+    renderValueSetFormColorOptions(state.valueSetFormColor);
   }
 }
 
@@ -700,6 +1171,51 @@ function renderTable() {
   restorePendingFocus();
 }
 
+function getVisibleTableData() {
+  const matrix = buildMatrix(state.data, {
+    selectedColumnIds: state.selectedColumnIds,
+    selectedTags: getSelectedTagsForMatrix(),
+    selectedItemIds: getSelectedItemIdsForMatrix()
+  });
+
+  const columnHeaders = matrix.columns.map((column) => ({
+    id: column.id,
+    name: column.name
+  }));
+
+  const rows = matrix.rows.map((row) => {
+    const rawValues = matrix.columns.map((column, index) => row.values?.[index] ?? null);
+    const resolvedValues = rawValues.map((rawValue) => {
+      const entry = resolveValueSetEntry(rawValue);
+      if (entry) {
+        return entry.label ?? "";
+      }
+      if (rawValue == null) {
+        return "";
+      }
+      return typeof rawValue === "string" ? rawValue : String(rawValue);
+    });
+
+    return {
+      id: row.id,
+      name: row.name,
+      tagId: row.tag ?? null,
+      tagLabel: row.tagLabel ?? "",
+      values: resolvedValues,
+      rawValues
+    };
+  });
+
+  return {
+    headers: [
+      { id: "__tag__", name: "タグ" },
+      { id: "__name__", name: "項目名" },
+      ...columnHeaders
+    ],
+    rows
+  };
+}
+
 function renderTableHeader(columns) {
   elements.tableHead.innerHTML = "";
   const headerRow = document.createElement("tr");
@@ -777,17 +1293,43 @@ function renderTableBody(rows, columns) {
     } else {
       columns.forEach((column, columnIndex) => {
         const td = document.createElement("td");
-        const isChecked = Boolean(row.values?.[columnIndex]);
-        const statusText = isChecked ? "○" : "✕";
-        const statusLabel = `${column.name}: ${isChecked ? "オン" : "オフ"}`;
-        td.textContent = statusText;
-        td.setAttribute("aria-label", statusLabel);
-        td.title = statusLabel;
-        td.classList.add(isChecked ? "status-owned" : "status-missing", "status-cell");
+        const value = row.values?.[columnIndex] ?? null;
+        const entry = resolveValueSetEntry(value);
+        const hasRawValue = value != null;
+        const isAssigned = entry != null || hasRawValue;
+        const ariaLabel = getCellAriaLabel(column.name, entry ?? value);
+        const fallbackLabel = hasRawValue ? (entry ? entry.label : typeof value === "string" ? value : String(value)) : "";
+        const displayLabel = entry ? entry.label : fallbackLabel;
+        const style = createCellColorStyle(entry);
+
+        td.textContent = displayLabel;
+        td.setAttribute("aria-label", ariaLabel);
+        td.title = style && entry ? `${ariaLabel} (${style.backgroundColor})` : ariaLabel;
+        td.classList.add(isAssigned ? "status-owned" : "status-missing", "status-cell");
         td.dataset.itemId = row.id;
         td.dataset.columnId = column.id;
-        td.setAttribute("role", "switch");
-        td.setAttribute("aria-checked", String(isChecked));
+        if ((entry && entry.label === "") || (!entry && typeof value === "string" && value === "")) {
+          td.dataset.emptyString = "true";
+        } else {
+          delete td.dataset.emptyString;
+        }
+        if (entry) {
+          td.dataset.valueId = entry.id;
+        } else {
+          delete td.dataset.valueId;
+        }
+        if (style) {
+          td.style.backgroundColor = style.backgroundColor;
+        } else {
+          td.style.removeProperty("background-color");
+        }
+        if (style) {
+          td.style.color = style.textColor;
+        } else {
+          td.style.removeProperty("color");
+        }
+        td.setAttribute("role", "button");
+        td.setAttribute("aria-pressed", String(isAssigned));
         td.tabIndex = 0;
         td.addEventListener("click", handleStatusCellActivation);
         td.addEventListener("keydown", handleStatusCellKeyDown);
@@ -819,10 +1361,11 @@ function handleStatusCellKeyDown(event) {
 function toggleItemValue(itemId, columnId) {
   const item = state.data.items.find((entry) => entry.id === itemId);
   if (!item) return;
-  const current = Boolean(item.values?.[columnId]);
+  const currentValue = item.values?.[columnId] ?? null;
+  const nextRawValue = getNextValue(currentValue);
   try {
     const nextData = updateItem(state.data, itemId, {
-      values: { [columnId]: !current }
+      values: { [columnId]: nextRawValue }
     });
     const focus = determineFocusTarget(nextData, itemId, [columnId]);
     applyDataUpdate(nextData, { focus });
@@ -853,11 +1396,17 @@ function openDialog(dialog) {
   if (!dialog) return;
   if (typeof dialog.showModal === "function") {
     if (!dialog.open) {
-      dialog.showModal();
+      try {
+        dialog.showModal();
+        return;
+      } catch (error) {
+        console.warn("showModal が失敗したため属性モードにフォールバックします", error);
+      }
+    } else {
+      return;
     }
-  } else {
-    dialog.setAttribute("open", "true");
   }
+  dialog.setAttribute("open", "true");
 }
 
 function closeDialog(dialog) {
@@ -937,22 +1486,31 @@ function handleColumnFormSubmit(event) {
   }
 }
 
-function renderItemDialogColumnOptions(selectedColumnIds = null) {
+function renderItemDialogColumnOptions(selectedColumns = null) {
   if (!elements.itemColumnOptions) return;
+  const columns = Array.isArray(state.data?.columns) ? state.data.columns : [];
   elements.itemColumnOptions.innerHTML = "";
-  const useSet = Array.isArray(selectedColumnIds);
-  const selectedSet = useSet ? new Set(selectedColumnIds) : null;
-  const selectAllByDefault = !useSet;
-  state.data.columns.forEach((column, index) => {
+  if (columns.length === 0) {
+    const empty = document.createElement("p");
+    empty.classList.add("item-dialog__no-columns");
+    empty.textContent = "列がありません";
+    elements.itemColumnOptions.appendChild(empty);
+    return;
+  }
+  const selectedSet = new Set(Array.isArray(selectedColumns) ? selectedColumns : []);
+  columns.forEach((column, index) => {
     const label = document.createElement("label");
     label.classList.add("checkbox-item");
+
     const input = document.createElement("input");
     input.type = "checkbox";
     input.value = column.id;
     input.id = `item-column-option-${index}`;
-    input.checked = useSet ? selectedSet.has(column.id) : selectAllByDefault;
+    input.checked = selectedSet.has(column.id);
+
     const span = document.createElement("span");
     span.textContent = column.name;
+
     label.appendChild(input);
     label.appendChild(span);
     elements.itemColumnOptions.appendChild(label);
@@ -974,7 +1532,9 @@ function openItemDialog(mode, context = {}) {
   elements.itemNameInput.value = item?.name ?? "";
   elements.itemTagInput.value = item?.tag ? getTagDisplayLabel(item.tag) : "";
   const selectedColumns = item
-    ? state.data.columns.filter((column) => Boolean(item.values?.[column.id])).map((column) => column.id)
+    ? state.data.columns
+        .filter((column) => isCellActive(item.values?.[column.id]))
+        .map((column) => column.id)
     : null;
   renderItemDialogColumnOptions(selectedColumns);
   setItemDialogError("");
@@ -1041,7 +1601,7 @@ function openTagDialog() {
   state.tagEditingId = null;
   setTagDialogError("");
   if (elements.tagDialogTitle instanceof HTMLElement) {
-    elements.tagDialogTitle.textContent = "タグ管理";
+    elements.tagDialogTitle.textContent = "タグ設定";
   }
   if (elements.tagNameInput instanceof HTMLInputElement) {
     elements.tagNameInput.value = "";
@@ -1424,6 +1984,512 @@ function resetTagDragState() {
   });
 }
 
+function setValueSetError(message) {
+  ensureValueSetElements();
+  if (!elements.valueSetError) return;
+  const text = trimInput(message);
+  if (!text) {
+    elements.valueSetError.textContent = "";
+    elements.valueSetError.hidden = true;
+    return;
+  }
+  elements.valueSetError.textContent = text;
+  elements.valueSetError.hidden = false;
+}
+
+function openValueSetDialog() {
+  ensureValueSetElements();
+  if (!elements.valueSetDialog) return;
+  state.valueSetEditingIndex = null;
+  state.valueSetPendingFocusIndex = null;
+  state.valueSetFormColor = DEFAULT_VALUE_SET_COLOR;
+  setValueSetError("");
+  if (elements.valueSetInput instanceof HTMLInputElement) {
+    elements.valueSetInput.value = "";
+  }
+  renderValueSetList();
+  renderValueSetFormColorOptions(state.valueSetFormColor);
+  openDialog(elements.valueSetDialog);
+  window.requestAnimationFrame(() => {
+    if (elements.valueSetInput instanceof HTMLInputElement) {
+      elements.valueSetInput.focus();
+      elements.valueSetInput.select();
+    }
+  });
+}
+
+function closeValueSetDialog() {
+  ensureValueSetElements();
+  if (!elements.valueSetDialog) return;
+  state.valueSetEditingIndex = null;
+  state.valueSetPendingFocusIndex = null;
+  state.valueSetFormColor = DEFAULT_VALUE_SET_COLOR;
+  valueSetDragState.sourceIndex = -1;
+  clearValueSetDragHoverClasses();
+  setValueSetError("");
+  if (elements.valueSetInput instanceof HTMLInputElement) {
+    elements.valueSetInput.value = "";
+  }
+  closeDialog(elements.valueSetDialog);
+}
+
+function renderValueSetList() {
+  ensureValueSetElements();
+  if (!elements.valueSetList) return;
+  const values = getValueSetEntries();
+  const normalizedLength = values.length;
+  const editingIndex = typeof state.valueSetEditingIndex === "number" ? state.valueSetEditingIndex : null;
+  if (editingIndex != null && (editingIndex < 0 || editingIndex >= normalizedLength)) {
+    state.valueSetEditingIndex = null;
+  }
+  const pendingFocusIndex = typeof state.valueSetPendingFocusIndex === "number" ? state.valueSetPendingFocusIndex : null;
+  if (pendingFocusIndex != null && (pendingFocusIndex < 0 || pendingFocusIndex >= normalizedLength)) {
+    state.valueSetPendingFocusIndex = null;
+  }
+
+  elements.valueSetList.innerHTML = "";
+
+  if (values.length === 0) {
+    const empty = document.createElement("li");
+    empty.classList.add("value-set-row", "value-set-row--empty");
+    empty.textContent = "値が登録されていません";
+    empty.setAttribute("aria-live", "polite");
+    elements.valueSetList.appendChild(empty);
+    return;
+  }
+
+  values.forEach((entry, index) => {
+    const row = document.createElement("li");
+    row.classList.add("value-set-row");
+    row.dataset.index = String(index);
+    if (entry?.id) {
+      row.dataset.valueId = entry.id;
+    } else {
+      delete row.dataset.valueId;
+    }
+    const colorValue = entry ? getEffectiveValueSetColor(entry.color) : DEFAULT_VALUE_SET_COLOR;
+    row.dataset.color = colorValue;
+    row.setAttribute("draggable", "false");
+
+    const handle = document.createElement("button");
+    handle.type = "button";
+    handle.classList.add("value-set-row__handle");
+    const description = getValueSetAriaDescription(entry);
+    handle.setAttribute("aria-label", `${description} をドラッグして並び替え`);
+    handle.innerHTML = "<span aria-hidden=\"true\">☰</span>";
+    handle.draggable = true;
+    handle.setAttribute("draggable", "true");
+
+    const actions = document.createElement("div");
+    actions.classList.add("value-set-row__actions");
+
+    if (state.valueSetEditingIndex === index) {
+      row.dataset.editing = "true";
+      handle.draggable = false;
+      handle.disabled = true;
+      handle.setAttribute("aria-disabled", "true");
+      handle.setAttribute("draggable", "false");
+
+      const input = document.createElement("input");
+      input.type = "text";
+      input.value = entry?.label ?? "";
+      input.classList.add("value-set-row__input");
+      input.dataset.valueInput = String(index);
+      input.addEventListener("keydown", (event) => {
+        if (event.key === "Enter") {
+          event.preventDefault();
+          handleValueSetRename(index);
+        } else if (event.key === "Escape") {
+          event.preventDefault();
+          cancelValueSetEdit();
+        }
+      });
+
+      const save = document.createElement("button");
+      save.type = "button";
+      save.classList.add("link-button", "value-set-row__save");
+      save.dataset.action = "save-value";
+      save.dataset.index = String(index);
+      save.textContent = "保存";
+
+      const cancel = document.createElement("button");
+      cancel.type = "button";
+      cancel.classList.add("link-button", "value-set-row__cancel");
+      cancel.dataset.action = "cancel-value";
+      cancel.textContent = "キャンセル";
+
+      actions.appendChild(save);
+      actions.appendChild(cancel);
+
+      const editBody = document.createElement("div");
+      editBody.classList.add("value-set-row__edit-body");
+
+      const colorPreview = document.createElement("div");
+      colorPreview.classList.add("value-set-row__color-readonly");
+
+      const colorChip = document.createElement("span");
+      colorChip.classList.add("value-set-row__color-chip");
+      colorChip.style.backgroundColor = colorValue;
+      colorChip.setAttribute("aria-hidden", "true");
+
+      const colorCode = document.createElement("span");
+      colorCode.classList.add("value-set-row__color-code");
+      colorCode.textContent = colorValue;
+
+      colorPreview.appendChild(colorChip);
+      colorPreview.appendChild(colorCode);
+
+      editBody.appendChild(colorPreview);
+      editBody.appendChild(input);
+
+      row.appendChild(handle);
+      row.appendChild(editBody);
+      row.appendChild(actions);
+    } else {
+      handle.removeAttribute("aria-disabled");
+
+      const label = document.createElement("span");
+      label.classList.add("value-set-row__label");
+      label.title = `${description} / ${colorValue}`;
+
+      const colorChip = document.createElement("span");
+      colorChip.classList.add("value-set-row__color-chip");
+      colorChip.style.backgroundColor = colorValue;
+      colorChip.setAttribute("aria-hidden", "true");
+
+      const labelText = document.createElement("span");
+      labelText.classList.add("value-set-row__label-text");
+      labelText.textContent = getValueSetDisplayLabel(entry);
+
+      label.appendChild(colorChip);
+      label.appendChild(labelText);
+
+      const edit = document.createElement("button");
+      edit.type = "button";
+      edit.classList.add("link-button", "value-set-row__edit");
+      edit.dataset.action = "edit-value";
+      edit.dataset.index = String(index);
+      edit.textContent = "編集";
+
+      const remove = document.createElement("button");
+      remove.type = "button";
+      remove.classList.add("link-button", "value-set-row__delete");
+      remove.dataset.action = "delete-value";
+      remove.dataset.index = String(index);
+      remove.textContent = "削除";
+
+      actions.appendChild(edit);
+      actions.appendChild(remove);
+
+      row.appendChild(handle);
+      row.appendChild(label);
+      row.appendChild(actions);
+    }
+
+    elements.valueSetList.appendChild(row);
+  });
+
+  if (typeof state.valueSetEditingIndex === "number" && state.valueSetEditingIndex >= 0) {
+    const targetIndex = state.valueSetEditingIndex;
+    window.requestAnimationFrame(() => {
+      const selector = `[data-value-input='${CSS.escape(String(targetIndex))}']`;
+      const input = elements.valueSetList?.querySelector(selector);
+      if (input instanceof HTMLInputElement) {
+        input.focus();
+        input.select();
+      }
+    });
+    return;
+  }
+
+  if (typeof state.valueSetPendingFocusIndex === "number" && state.valueSetPendingFocusIndex >= 0) {
+    const targetIndex = state.valueSetPendingFocusIndex;
+    state.valueSetPendingFocusIndex = null;
+    window.requestAnimationFrame(() => {
+      const selector = `.value-set-row[data-index='${CSS.escape(String(targetIndex))}'] .value-set-row__handle`;
+      const handle = elements.valueSetList?.querySelector(selector);
+      if (handle instanceof HTMLElement) {
+        handle.focus();
+      }
+    });
+  }
+}
+
+function handleValueSetFormSubmit(event) {
+  event.preventDefault();
+  ensureValueSetElements();
+  if (!(elements.valueSetInput instanceof HTMLInputElement)) {
+    return;
+  }
+  const rawValue = elements.valueSetInput.value;
+  const selectedColor = getEffectiveValueSetColor(state.valueSetFormColor);
+  try {
+    const nextData = addValueSetEntry(state.data, {
+      label: rawValue,
+      color: selectedColor
+    });
+    state.valueSetEditingIndex = null;
+    state.valueSetPendingFocusIndex = nextData.valueSet.length - 1;
+    applyDataUpdate(nextData);
+    elements.valueSetInput.value = "";
+    setValueSetError("");
+    renderValueSetFormColorOptions(state.valueSetFormColor);
+    window.requestAnimationFrame(() => {
+      elements.valueSetInput?.focus();
+    });
+  } catch (error) {
+    console.error(error);
+    const message = error instanceof Error ? error.message : "値の追加に失敗しました";
+    setValueSetError(message);
+  }
+}
+
+function handleValueSetFormColorChange(event) {
+  const target = event.target;
+  if (!(target instanceof HTMLInputElement)) {
+    return;
+  }
+  if (target.dataset.role !== "value-set-form-color") {
+    return;
+  }
+  state.valueSetFormColor = getEffectiveValueSetColor(target.value);
+}
+
+function handleValueSetListClick(event) {
+  ensureValueSetElements();
+  const target = event.target instanceof HTMLElement ? event.target.closest("button[data-action]") : null;
+  if (!target) {
+    return;
+  }
+  const action = target.dataset.action ?? "";
+  const rawIndex = target.dataset.index ?? target.closest(".value-set-row")?.dataset.index ?? "";
+  const index = Number(rawIndex);
+  switch (action) {
+    case "edit-value":
+      if (Number.isInteger(index)) {
+        enterValueSetEditMode(index);
+      }
+      break;
+    case "cancel-value":
+      cancelValueSetEdit();
+      break;
+    case "save-value":
+      if (Number.isInteger(index)) {
+        handleValueSetRename(index);
+      }
+      break;
+    case "delete-value":
+      if (Number.isInteger(index)) {
+        handleValueSetDeletion(index);
+      }
+      break;
+    default:
+      break;
+  }
+}
+
+function enterValueSetEditMode(index) {
+  if (!Number.isInteger(index)) return;
+  state.valueSetEditingIndex = index;
+  state.valueSetPendingFocusIndex = null;
+  const values = getValueSetEntries();
+  const entry = values[index] ?? null;
+  setValueSetError("");
+  renderValueSetList();
+}
+
+function cancelValueSetEdit() {
+  ensureValueSetElements();
+  state.valueSetEditingIndex = null;
+  setValueSetError("");
+  renderValueSetList();
+}
+
+function handleValueSetRename(index) {
+  ensureValueSetElements();
+  if (!Number.isInteger(index)) return;
+  const selector = `[data-value-input='${CSS.escape(String(index))}']`;
+  const input = elements.valueSetList?.querySelector(selector);
+  const rawValue = input instanceof HTMLInputElement ? input.value : "";
+  const values = getValueSetEntries();
+  const currentEntry = values[index] ?? null;
+  try {
+    const nextData = updateValueSetEntry(state.data, index, {
+      label: rawValue,
+      color: getEffectiveValueSetColor(currentEntry?.color)
+    });
+    state.valueSetEditingIndex = null;
+    state.valueSetPendingFocusIndex = index;
+    applyDataUpdate(nextData);
+    setValueSetError("");
+  } catch (error) {
+    console.error(error);
+    const message = error instanceof Error ? error.message : "値の更新に失敗しました";
+    setValueSetError(message);
+    if (input instanceof HTMLInputElement) {
+      window.requestAnimationFrame(() => {
+        input.focus();
+        input.select();
+      });
+    }
+  }
+}
+
+function handleValueSetDeletion(index) {
+  ensureValueSetElements();
+  if (!Number.isInteger(index)) return;
+  const values = getValueSetEntries();
+  const currentValue = values[index] ?? null;
+  const display = getValueSetDisplayLabel(currentValue);
+  const confirmed = window.confirm(`値「${display}」を削除しますか？使用中のセルは未設定になります。`);
+  if (!confirmed) {
+    return;
+  }
+  try {
+    const nextData = removeValueSetEntry(state.data, index);
+    state.valueSetEditingIndex = null;
+    const nextLength = nextData.valueSet.length;
+    state.valueSetPendingFocusIndex = nextLength > 0 ? Math.min(index, nextLength - 1) : null;
+    applyDataUpdate(nextData);
+    setValueSetError("");
+  } catch (error) {
+    console.error(error);
+    const message = error instanceof Error ? error.message : "値の削除に失敗しました";
+    setValueSetError(message);
+  }
+}
+
+function clearValueSetDragHoverClasses() {
+  ensureValueSetElements();
+  if (!elements.valueSetList) return;
+  elements.valueSetList
+    .querySelectorAll(".value-set-row--dragover-before, .value-set-row--dragover-after")
+    .forEach((row) => row.classList.remove("value-set-row--dragover-before", "value-set-row--dragover-after"));
+}
+
+function handleValueSetDragStart(event) {
+  ensureValueSetElements();
+  const handle = event.target instanceof HTMLElement ? event.target.closest(".value-set-row__handle") : null;
+  if (!handle) {
+    return;
+  }
+  const row = handle.closest(".value-set-row");
+  if (!row || row.dataset.editing === "true") {
+    event.preventDefault();
+    return;
+  }
+  if (row.classList.contains("value-set-row--empty")) {
+    event.preventDefault();
+    return;
+  }
+  const index = Number(row.dataset.index);
+  if (!Number.isInteger(index)) {
+    event.preventDefault();
+    return;
+  }
+  valueSetDragState.sourceIndex = index;
+  clearValueSetDragHoverClasses();
+  row.classList.add("value-set-row--dragging");
+  if (event.dataTransfer) {
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("text/plain", row.dataset.valueId ?? "");
+  }
+}
+
+function handleValueSetDragOver(event) {
+  ensureValueSetElements();
+  if (valueSetDragState.sourceIndex === -1) {
+    return;
+  }
+  const row = event.target instanceof HTMLElement ? event.target.closest(".value-set-row") : null;
+  if (!row || row.dataset.editing === "true" || row.classList.contains("value-set-row--empty")) {
+    event.preventDefault();
+    if (event.dataTransfer) {
+      event.dataTransfer.dropEffect = "move";
+    }
+    clearValueSetDragHoverClasses();
+    return;
+  }
+  event.preventDefault();
+  if (event.dataTransfer) {
+    event.dataTransfer.dropEffect = "move";
+  }
+  const rect = row.getBoundingClientRect();
+  const after = event.clientY > rect.top + rect.height / 2;
+  clearValueSetDragHoverClasses();
+  row.classList.add(after ? "value-set-row--dragover-after" : "value-set-row--dragover-before");
+}
+
+function handleValueSetDragLeave(event) {
+  ensureValueSetElements();
+  const row = event.target instanceof HTMLElement ? event.target.closest(".value-set-row") : null;
+  if (!row) {
+    return;
+  }
+  row.classList.remove("value-set-row--dragover-before", "value-set-row--dragover-after");
+}
+
+function handleValueSetDrop(event) {
+  ensureValueSetElements();
+  if (valueSetDragState.sourceIndex === -1) {
+    return;
+  }
+  event.preventDefault();
+  const values = Array.isArray(state.data?.valueSet) ? state.data.valueSet : [];
+  const row = event.target instanceof HTMLElement ? event.target.closest(".value-set-row") : null;
+  let rawIndex = values.length;
+  if (row && row.dataset.index && !row.classList.contains("value-set-row--empty")) {
+    const index = Number(row.dataset.index);
+    if (Number.isInteger(index)) {
+      const rect = row.getBoundingClientRect();
+      const after = event.clientY > rect.top + rect.height / 2;
+      rawIndex = after ? index + 1 : index;
+    }
+  }
+  const fromIndex = valueSetDragState.sourceIndex;
+  if (!Number.isInteger(fromIndex) || fromIndex < 0 || fromIndex >= values.length) {
+    resetValueSetDragState();
+    return;
+  }
+  const tempValues = values.slice();
+  const [moved] = tempValues.splice(fromIndex, 1);
+  const insertionIndex = Math.min(Math.max(rawIndex, 0), tempValues.length);
+  tempValues.splice(insertionIndex, 0, moved);
+  const finalIndex = tempValues.indexOf(moved);
+  if (finalIndex === fromIndex || finalIndex === -1) {
+    resetValueSetDragState();
+    renderValueSetList();
+    return;
+  }
+  try {
+    const nextData = reorderValueSet(state.data, fromIndex, finalIndex);
+    state.valueSetPendingFocusIndex = finalIndex;
+    applyDataUpdate(nextData);
+    setValueSetError("");
+  } catch (error) {
+    console.error(error);
+    const message = error instanceof Error ? error.message : "値の並び替えに失敗しました";
+    setValueSetError(message);
+  } finally {
+    resetValueSetDragState();
+  }
+}
+
+function handleValueSetDragEnd() {
+  ensureValueSetElements();
+  resetValueSetDragState();
+}
+
+function resetValueSetDragState() {
+  ensureValueSetElements();
+  valueSetDragState.sourceIndex = -1;
+  clearValueSetDragHoverClasses();
+  if (!elements.valueSetList) return;
+  elements.valueSetList.querySelectorAll(".value-set-row--dragging").forEach((row) => {
+    row.classList.remove("value-set-row--dragging");
+  });
+}
+
 function determineFocusTarget(data, itemId, preferredColumnIds = []) {
   if (!itemId) {
     return null;
@@ -1575,6 +2641,9 @@ function applyDataUpdate(nextData, options = {}) {
   }
   if (elements.tagDialog && elements.tagDialog.open) {
     renderTagList();
+  }
+  if (elements.valueSetDialog && elements.valueSetDialog.open) {
+    renderValueSetList();
   }
 }
 

@@ -9,52 +9,60 @@
 <body>
   <main class="app">
     <header class="app__header">
-  <h1 class="app__title">チェックマトリクス（汎用）</h1>
+      <h1 class="app__title">チェックマトリクス（汎用）</h1>
       <div class="app__controls">
-        <input type="file" accept="application/json" id="json-file" hidden>
-        <button type="button" id="load-json" class="button">JSON読込</button>
-        <button type="button" id="save-json" class="button button--primary">JSON保存</button>
-        <button type="button" id="reset-data" class="button button--danger">初期化</button>
-        <button type="button" id="add-item" class="button button--accent">項目追加</button>
-        <button type="button" id="add-column" class="button button--accent">列追加</button>
-        <button type="button" id="manage-tags" class="button button--ghost">タグ管理</button>
-        <div class="filter-group">
-          <button type="button" id="toggle-filter" class="button button--ghost">列フィルター ▼</button>
-          <div id="column-filter" class="filter-panel" hidden>
-            <div class="filter-panel__header">
-              <span>表示列</span>
-              <div class="filter-panel__actions">
-                <button type="button" id="select-all-columns" class="link-button">すべて</button>
-                <button type="button" id="clear-all-columns" class="link-button">全解除</button>
-              </div>
-            </div>
-            <div id="column-checkboxes" class="checkbox-list"></div>
-          </div>
+        <div class="app__controls-row app__controls-row--actions">
+          <input type="file" accept="application/json" id="json-file" hidden>
+          <button type="button" id="load-json" class="button">JSON読込</button>
+          <button type="button" id="save-json" class="button button--primary">JSON保存</button>
+          <button type="button" id="export-csv" class="button">CSV出力</button>
+          <button type="button" id="reset-data" class="button button--danger">初期化</button>
+          <button type="button" id="add-item" class="button button--accent">項目追加</button>
+          <button type="button" id="add-column" class="button button--accent">列追加</button>
         </div>
-        <div class="filter-group">
-          <button type="button" id="toggle-tag-filter" class="button button--ghost">タグ ▼</button>
-          <div id="tag-filter" class="filter-panel" hidden>
-            <div class="filter-panel__header">
-              <span>タグ</span>
-              <div class="filter-panel__actions">
-                <button type="button" id="select-all-tags" class="link-button">すべて</button>
-                <button type="button" id="clear-all-tags" class="link-button">全解除</button>
-              </div>
-            </div>
-            <div id="tag-checkboxes" class="checkbox-list"></div>
-          </div>
+        <div class="app__controls-row app__controls-row--management">
+          <button type="button" id="manage-tags" class="button button--ghost">タグ設定</button>
+          <button type="button" id="manage-value-set" class="button button--ghost">値セット設定</button>
         </div>
-        <div class="filter-group">
-          <button type="button" id="toggle-item-filter" class="button button--ghost">項目 ▼</button>
-          <div id="item-filter" class="filter-panel" hidden>
-            <div class="filter-panel__header">
-              <span>項目</span>
-              <div class="filter-panel__actions">
-                <button type="button" id="select-all-items" class="link-button">すべて</button>
-                <button type="button" id="clear-all-items" class="link-button">全解除</button>
+        <div class="app__controls-row app__controls-row--filters">
+          <div class="filter-group">
+            <button type="button" id="toggle-filter" class="button button--filter">列の表示切替 ▼</button>
+            <div id="column-filter" class="filter-panel" hidden>
+              <div class="filter-panel__header">
+                <span>表示列</span>
+                <div class="filter-panel__actions">
+                  <button type="button" id="select-all-columns" class="link-button">すべて</button>
+                  <button type="button" id="clear-all-columns" class="link-button">全解除</button>
+                </div>
               </div>
+              <div id="column-checkboxes" class="checkbox-list"></div>
             </div>
-            <div id="item-checkboxes" class="checkbox-list checkbox-list--items"></div>
+          </div>
+          <div class="filter-group">
+            <button type="button" id="toggle-tag-filter" class="button button--filter">タグで絞り込み ▼</button>
+            <div id="tag-filter" class="filter-panel" hidden>
+              <div class="filter-panel__header">
+                <span>タグ</span>
+                <div class="filter-panel__actions">
+                  <button type="button" id="select-all-tags" class="link-button">すべて</button>
+                  <button type="button" id="clear-all-tags" class="link-button">全解除</button>
+                </div>
+              </div>
+              <div id="tag-checkboxes" class="checkbox-list"></div>
+            </div>
+          </div>
+          <div class="filter-group">
+            <button type="button" id="toggle-item-filter" class="button button--filter">項目で絞り込み ▼</button>
+            <div id="item-filter" class="filter-panel" hidden>
+              <div class="filter-panel__header">
+                <span>項目</span>
+                <div class="filter-panel__actions">
+                  <button type="button" id="select-all-items" class="link-button">すべて</button>
+                  <button type="button" id="clear-all-items" class="link-button">全解除</button>
+                </div>
+              </div>
+              <div id="item-checkboxes" class="checkbox-list checkbox-list--items"></div>
+            </div>
           </div>
         </div>
       </div>
@@ -114,10 +122,47 @@
     </form>
   </dialog>
 
+  <dialog id="value-set-dialog" class="modal modal--wide" aria-labelledby="value-set-dialog-title">
+    <div class="modal__header">
+      <h2 id="value-set-dialog-title" class="modal__title">値セット設定</h2>
+      <button type="button" class="button button--ghost modal__close" data-action="close-value-set-dialog" aria-label="値セット設定を閉じる">✕</button>
+    </div>
+    <div class="modal__content">
+      <section class="value-set-manager">
+        <header class="value-set-manager__header">
+          <h3 class="value-set-manager__subtitle">値一覧</h3>
+          <p class="value-set-manager__hint">ドラッグ＆ドロップで順序を変更できます</p>
+        </header>
+        <ul id="value-set-list" class="value-set-list" aria-live="polite"></ul>
+      </section>
+      <form id="value-set-form" class="value-set-form">
+        <label class="value-set-form__field">
+          <span class="value-set-form__label">値を追加</span>
+          <input type="text" id="value-set-input" placeholder="例: 進行中" autocomplete="off">
+        </label>
+        <div class="value-set-form__field">
+          <span class="value-set-form__label" id="value-set-color-label">カラー</span>
+          <div
+            id="value-set-color-options"
+            class="value-set-color-grid"
+            role="radiogroup"
+            aria-labelledby="value-set-color-label"
+          ></div>
+        </div>
+        <p class="value-set-form__hint">空文字も有効な値として扱われます</p>
+        <div class="value-set-form__actions">
+          <button type="submit" id="value-set-submit" class="button button--primary">追加</button>
+          <button type="button" class="button button--ghost" data-action="close-value-set-dialog">閉じる</button>
+        </div>
+      </form>
+      <p id="value-set-error" class="modal__error" role="alert" hidden></p>
+    </div>
+  </dialog>
+
   <dialog id="tag-dialog" class="modal modal--wide" aria-labelledby="tag-dialog-title">
     <div class="modal__header">
-      <h2 id="tag-dialog-title" class="modal__title">タグ管理</h2>
-      <button type="button" class="button button--ghost modal__close" data-action="close-tag-dialog" aria-label="タグ管理を閉じる">✕</button>
+      <h2 id="tag-dialog-title" class="modal__title">タグ設定</h2>
+      <button type="button" class="button button--ghost modal__close" data-action="close-tag-dialog" aria-label="タグ設定を閉じる">✕</button>
     </div>
     <div class="modal__content">
       <section class="tag-manager">
