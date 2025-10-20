@@ -23,6 +23,7 @@ import {
   reorderValueSet
 } from "./dataUtils.js";
 import { createCsvStringFromTableData } from "./csvUtils.js";
+import { loadReadOnlyPreference, saveReadOnlyPreference, createReadOnlyGuard } from "./readOnlyState.js";
 
 const UNTAGGED_TAG_VALUE = "__untagged__";
 const DEFAULT_VALUE_COLOR = "#E5E7EB";
@@ -44,6 +45,7 @@ const VALUE_SET_COLOR_PRESETS = [
 const DEFAULT_VALUE_SET_COLOR = VALUE_SET_COLOR_PRESETS[0]?.value ?? DEFAULT_VALUE_COLOR;
 const DEFAULT_TEXT_COLOR = "var(--text-color)";
 const CONTRAST_TEXT_COLOR = "#FFFFFF";
+const READONLY_ALERT_MESSAGE = "読み取り専用モードになっています [OK]";
 
 const state = {
   data: DEFAULT_DATA,
@@ -54,7 +56,8 @@ const state = {
   tagEditingId: null,
   valueSetEditingIndex: null,
   valueSetPendingFocusIndex: null,
-  valueSetFormColor: DEFAULT_VALUE_SET_COLOR
+  valueSetFormColor: DEFAULT_VALUE_SET_COLOR,
+  isReadOnly: false
 };
 
 function hexToRgbChannels(value) {
@@ -381,6 +384,7 @@ const valueSetDragState = {
 };
 
 const elements = {
+  appRoot: document.querySelector(".app"),
   fileInput: document.querySelector("#json-file"),
   loadButton: document.querySelector("#load-json"),
   saveButton: document.querySelector("#save-json"),
@@ -390,10 +394,12 @@ const elements = {
   columnCheckboxes: document.querySelector("#column-checkboxes"),
   selectAllColumns: document.querySelector("#select-all-columns"),
   clearAllColumns: document.querySelector("#clear-all-columns"),
+  readOnlyToggle: document.querySelector("#readonly-mode"),
   resetButton: document.querySelector("#reset-data"),
   addItemButton: document.querySelector("#add-item"),
   addColumnButton: document.querySelector("#add-column"),
   manageValueSetButton: document.querySelector("#manage-value-set"),
+  manageTagsButton: document.querySelector("#manage-tags"),
   tagFilterToggle: document.querySelector("#toggle-tag-filter"),
   tagFilterPanel: document.querySelector("#tag-filter"),
   tagCheckboxes: document.querySelector("#tag-checkboxes"),
@@ -404,6 +410,7 @@ const elements = {
   itemCheckboxes: document.querySelector("#item-checkboxes"),
   selectAllItems: document.querySelector("#select-all-items"),
   clearAllItems: document.querySelector("#clear-all-items"),
+  matrixTable: document.querySelector("#matrix-table"),
   tableHead: document.querySelector("#matrix-table thead"),
   tableBody: document.querySelector("#matrix-table tbody"),
   emptyState: document.querySelector("#empty-state"),
@@ -422,7 +429,6 @@ const elements = {
   itemDialogTitle: document.querySelector("#item-dialog-title"),
   itemSubmitButton: document.querySelector("#item-submit"),
   itemError: document.querySelector("#item-error"),
-  manageTagsButton: document.querySelector("#manage-tags"),
   tagDialog: document.querySelector("#tag-dialog"),
   tagDialogTitle: document.querySelector("#tag-dialog-title"),
   tagList: document.querySelector("#tag-list"),
@@ -545,6 +551,7 @@ function init() {
   if (stored) {
     state.data = stored;
   }
+  state.isReadOnly = loadReadOnlyPreference();
   renderAll();
   bindEvents();
 }
@@ -558,12 +565,203 @@ function safeLoadFromStorage() {
   }
 }
 
+function syncReadOnlyControl() {
+  if (!elements.readOnlyToggle) {
+    return;
+  }
+  elements.readOnlyToggle.checked = Boolean(state.isReadOnly);
+}
+
+function isReadOnlyActive() {
+  return Boolean(state.isReadOnly);
+}
+
+function alertReadOnly() {
+  if (typeof window !== "undefined" && typeof window.alert === "function") {
+    window.alert(READONLY_ALERT_MESSAGE);
+    return;
+  }
+  if (typeof globalThis !== "undefined" && typeof globalThis.alert === "function") {
+    globalThis.alert(READONLY_ALERT_MESSAGE);
+  }
+}
+
+const guardReadOnly = createReadOnlyGuard(() => isReadOnlyActive(), alertReadOnly);
+
+function setInteractiveDisabled(element, disabled) {
+  if (!element) {
+    return;
+  }
+  if (typeof element.disabled === "boolean") {
+    element.disabled = disabled;
+  }
+  if (disabled) {
+    element.setAttribute("aria-disabled", "true");
+    element.classList.add("is-readonly-disabled");
+  } else {
+    element.removeAttribute("aria-disabled");
+    element.classList.remove("is-readonly-disabled");
+  }
+}
+
+function updateReadOnlyUI() {
+  const readOnly = isReadOnlyActive();
+  if (elements.appRoot) {
+    elements.appRoot.classList.toggle("app--readonly", readOnly);
+  }
+  if (elements.matrixTable) {
+    elements.matrixTable.classList.toggle("matrix-table--readonly", readOnly);
+  }
+  setInteractiveDisabled(elements.loadButton, readOnly);
+  setInteractiveDisabled(elements.resetButton, readOnly);
+  setInteractiveDisabled(elements.addItemButton, readOnly);
+  setInteractiveDisabled(elements.addColumnButton, readOnly);
+  setInteractiveDisabled(elements.manageTagsButton, readOnly);
+  setInteractiveDisabled(elements.manageValueSetButton, readOnly);
+  if (elements.fileInput && typeof elements.fileInput.disabled === "boolean") {
+    elements.fileInput.disabled = readOnly;
+  }
+  const dialogInputs = [
+    elements.columnNameInput,
+    elements.itemNameInput,
+    elements.itemTagInput,
+    elements.tagNameInput,
+    elements.valueSetInput
+  ];
+  dialogInputs.forEach((input) => {
+    if (input && typeof input.disabled === "boolean") {
+      input.disabled = readOnly;
+    }
+  });
+  if (elements.columnSubmitButton) {
+    setInteractiveDisabled(elements.columnSubmitButton, readOnly);
+  }
+  if (elements.itemSubmitButton) {
+    setInteractiveDisabled(elements.itemSubmitButton, readOnly);
+  }
+  if (elements.valueSetSubmitButton) {
+    setInteractiveDisabled(elements.valueSetSubmitButton, readOnly);
+  }
+  if (elements.itemColumnOptions) {
+    const checkboxes = elements.itemColumnOptions.querySelectorAll("input[type='checkbox']");
+    checkboxes.forEach((checkbox) => {
+      if (typeof checkbox.disabled === "boolean") {
+        checkbox.disabled = readOnly;
+      }
+    });
+  }
+  if (elements.valueSetColorOptions) {
+    const radios = elements.valueSetColorOptions.querySelectorAll("input[type='radio']");
+    radios.forEach((radio) => {
+      if (typeof radio.disabled === "boolean") {
+        radio.disabled = readOnly;
+      }
+    });
+  }
+  if (elements.tagList) {
+    elements.tagList.classList.toggle("tag-list--readonly", readOnly);
+    elements.tagList.setAttribute("aria-disabled", String(readOnly));
+    const tagButtons = elements.tagList.querySelectorAll("button[data-action]");
+    tagButtons.forEach((button) => setInteractiveDisabled(button, readOnly));
+    const tagHandles = elements.tagList.querySelectorAll(".tag-row__handle");
+    tagHandles.forEach((handle) => {
+      const row = handle.closest(".tag-row");
+      const isEditing = row?.dataset.editing === "true";
+      if (readOnly) {
+        setInteractiveDisabled(handle, true);
+        handle.setAttribute("draggable", "false");
+        handle.classList.add("tag-row__handle--readonly");
+      } else {
+        handle.classList.remove("is-readonly-disabled", "tag-row__handle--readonly");
+        if (isEditing) {
+          handle.disabled = true;
+          handle.setAttribute("aria-disabled", "true");
+        } else {
+          handle.disabled = false;
+          handle.removeAttribute("aria-disabled");
+        }
+        handle.setAttribute("draggable", isEditing ? "false" : "true");
+      }
+    });
+  }
+  if (elements.valueSetList) {
+    elements.valueSetList.classList.toggle("value-set-list--readonly", readOnly);
+    elements.valueSetList.setAttribute("aria-disabled", String(readOnly));
+    const valueButtons = elements.valueSetList.querySelectorAll("button[data-action]");
+    valueButtons.forEach((button) => setInteractiveDisabled(button, readOnly));
+    const valueHandles = elements.valueSetList.querySelectorAll(".value-set-row__handle");
+    valueHandles.forEach((handle) => {
+      const row = handle.closest(".value-set-row");
+      const isEditing = row?.dataset.editing === "true";
+      if (readOnly) {
+        setInteractiveDisabled(handle, true);
+        handle.setAttribute("draggable", "false");
+        handle.classList.add("value-set-row__handle--readonly");
+      } else {
+        handle.classList.remove("is-readonly-disabled", "value-set-row__handle--readonly");
+        if (isEditing) {
+          handle.disabled = true;
+          handle.setAttribute("aria-disabled", "true");
+        } else {
+          handle.disabled = false;
+          handle.removeAttribute("aria-disabled");
+        }
+        handle.setAttribute("draggable", isEditing ? "false" : "true");
+      }
+    });
+  }
+  if (elements.tableHead) {
+    const headerButtons = elements.tableHead.querySelectorAll(".rename-button, .delete-button");
+    headerButtons.forEach((button) => setInteractiveDisabled(button, readOnly));
+  }
+  if (elements.tableBody) {
+    const bodyButtons = elements.tableBody.querySelectorAll(".rename-button, .delete-button");
+    bodyButtons.forEach((button) => setInteractiveDisabled(button, readOnly));
+    const statusCells = elements.tableBody.querySelectorAll(".status-cell");
+    statusCells.forEach((cell) => {
+      cell.setAttribute("aria-readonly", String(readOnly));
+      if (readOnly) {
+        cell.setAttribute("aria-disabled", "true");
+        cell.tabIndex = -1;
+        cell.classList.add("status-cell--readonly");
+      } else {
+        cell.removeAttribute("aria-disabled");
+        cell.tabIndex = 0;
+        cell.classList.remove("status-cell--readonly");
+      }
+    });
+  }
+  if (readOnly) {
+    state.tagEditingId = null;
+    state.valueSetEditingIndex = null;
+    if (elements.columnDialog && elements.columnDialog.open) {
+      closeColumnDialog();
+    }
+    if (elements.itemDialog && elements.itemDialog.open) {
+      closeItemDialog();
+    }
+    if (elements.tagDialog && elements.tagDialog.open) {
+      closeTagDialog();
+    }
+    if (elements.valueSetDialog && elements.valueSetDialog.open) {
+      closeValueSetDialog();
+    }
+  }
+}
+
 function bindEvents() {
   ensureValueSetElements();
-  elements.loadButton.addEventListener("click", () => {
+  elements.loadButton.addEventListener("click", (event) => {
+    if (guardReadOnly(event)) {
+      return;
+    }
     elements.fileInput.value = "";
     elements.fileInput.click();
   });
+
+  if (elements.readOnlyToggle) {
+    elements.readOnlyToggle.addEventListener("change", handleReadOnlyToggleChange);
+  }
 
   elements.fileInput.addEventListener("change", handleFileSelection);
   elements.saveButton.addEventListener("click", handleSaveJson);
@@ -621,11 +819,21 @@ function bindEvents() {
   }
 
   if (elements.addColumnButton) {
-    elements.addColumnButton.addEventListener("click", () => openColumnDialog("add"));
+    elements.addColumnButton.addEventListener("click", (event) => {
+      if (guardReadOnly(event)) {
+        return;
+      }
+      openColumnDialog("add");
+    });
   }
 
   if (elements.addItemButton) {
-    elements.addItemButton.addEventListener("click", () => openItemDialog("add"));
+    elements.addItemButton.addEventListener("click", (event) => {
+      if (guardReadOnly(event)) {
+        return;
+      }
+      openItemDialog("add");
+    });
   }
 
   if (elements.columnForm) {
@@ -653,11 +861,21 @@ function bindEvents() {
   }
 
   if (elements.manageTagsButton) {
-    elements.manageTagsButton.addEventListener("click", openTagDialog);
+    elements.manageTagsButton.addEventListener("click", (event) => {
+      if (guardReadOnly(event)) {
+        return;
+      }
+      openTagDialog();
+    });
   }
 
   if (elements.manageValueSetButton) {
-    elements.manageValueSetButton.addEventListener("click", openValueSetDialog);
+    elements.manageValueSetButton.addEventListener("click", (event) => {
+      if (guardReadOnly(event)) {
+        return;
+      }
+      openValueSetDialog();
+    });
   }
 
   if (elements.tagForm) {
@@ -722,7 +940,24 @@ function bindEvents() {
   }
 }
 
+function handleReadOnlyToggleChange(event) {
+  const target = event?.target;
+  const isInputElement = typeof HTMLInputElement !== "undefined" && target instanceof HTMLInputElement;
+  const checked = isInputElement ? target.checked : Boolean(target?.checked);
+  state.isReadOnly = Boolean(checked);
+  saveReadOnlyPreference(state.isReadOnly);
+  syncReadOnlyControl();
+  updateReadOnlyUI();
+  renderAll();
+}
+
 function handleFileSelection(event) {
+  if (guardReadOnly(event)) {
+    if (elements.fileInput) {
+      elements.fileInput.value = "";
+    }
+    return;
+  }
   const file = event.target.files?.[0];
   if (!file) return;
   const reader = new FileReader();
@@ -751,7 +986,10 @@ function handleFileSelection(event) {
   reader.readAsText(file);
 }
 
-function handleResetData() {
+function handleResetData(event) {
+  if (guardReadOnly(event)) {
+    return;
+  }
   const confirmed = window.confirm("読み込んだデータを初期状態に戻します。よろしいですか？");
   if (!confirmed) {
     return;
@@ -845,6 +1083,7 @@ function updateFilterActionStates() {
 }
 
 function renderAll() {
+  syncReadOnlyControl();
   renderColumnCheckboxes();
   renderTagCheckboxes();
   renderItemCheckboxes();
@@ -857,6 +1096,7 @@ function renderAll() {
     renderValueSetList();
     renderValueSetFormColorOptions(state.valueSetFormColor);
   }
+  updateReadOnlyUI();
 }
 
 function renderColumnCheckboxes() {
@@ -1234,7 +1474,7 @@ function renderTableHeader(columns) {
   } else {
     columns.forEach((column) => {
       const th = document.createElement("th");
-  th.classList.add("matrix-table__column-header");
+      th.classList.add("matrix-table__column-header");
       const wrapper = document.createElement("span");
       wrapper.classList.add("header-with-actions");
       const label = document.createElement("span");
@@ -1257,8 +1497,12 @@ function renderTableBody(rows, columns) {
   if (rows.length === 0) {
     return;
   }
+  const readOnly = isReadOnlyActive();
   rows.forEach((row) => {
     const tr = document.createElement("tr");
+    if (readOnly) {
+      tr.classList.add("matrix-row--readonly");
+    }
 
     const tagCell = document.createElement("td");
     tagCell.appendChild(createTagBadge(row.tag, row.tagLabel));
@@ -1281,6 +1525,9 @@ function renderTableBody(rows, columns) {
     actionGroup.classList.add("action-group");
     actionGroup.appendChild(createItemRenameButton(row.id, row.name));
     actionGroup.appendChild(createItemDeleteButton(row.id, row.name));
+      if (readOnly) {
+        actionGroup.classList.add("action-group--disabled");
+      }
     nameWrapper.appendChild(actionGroup);
     nameCell.appendChild(nameWrapper);
     tr.appendChild(nameCell);
@@ -1306,6 +1553,10 @@ function renderTableBody(rows, columns) {
         td.setAttribute("aria-label", ariaLabel);
         td.title = style && entry ? `${ariaLabel} (${style.backgroundColor})` : ariaLabel;
         td.classList.add(isAssigned ? "status-owned" : "status-missing", "status-cell");
+        if (readOnly) {
+          td.setAttribute("aria-readonly", "true");
+          td.classList.add("status-cell--readonly");
+        }
         td.dataset.itemId = row.id;
         td.dataset.columnId = column.id;
         if ((entry && entry.label === "") || (!entry && typeof value === "string" && value === "")) {
@@ -1342,6 +1593,9 @@ function renderTableBody(rows, columns) {
 }
 
 function handleStatusCellActivation(event) {
+  if (guardReadOnly(event)) {
+    return;
+  }
   const cell = event.currentTarget;
   const itemId = cell.dataset.itemId ?? "";
   const columnId = cell.dataset.columnId ?? "";
@@ -1359,6 +1613,9 @@ function handleStatusCellKeyDown(event) {
 }
 
 function toggleItemValue(itemId, columnId) {
+  if (isReadOnlyActive()) {
+    return;
+  }
   const item = state.data.items.find((entry) => entry.id === itemId);
   if (!item) return;
   const currentValue = item.values?.[columnId] ?? null;
@@ -1419,6 +1676,10 @@ function closeDialog(dialog) {
 }
 
 function openColumnDialog(mode, context = {}) {
+  if (isReadOnlyActive()) {
+    alertReadOnly();
+    return;
+  }
   if (!elements.columnDialog || !elements.columnNameInput) return;
   const columnId = typeof context.columnId === "string" ? context.columnId : "";
   const columnName = typeof context.columnName === "string" ? context.columnName : "";
@@ -1466,6 +1727,9 @@ function setColumnDialogError(message) {
 
 function handleColumnFormSubmit(event) {
   event.preventDefault();
+  if (guardReadOnly(event)) {
+    return;
+  }
   if (!elements.columnDialog || !elements.columnNameInput) return;
   const mode = elements.columnDialog.dataset.mode === "rename" ? "rename" : "add";
   const columnId = elements.columnDialog.dataset.columnId ?? "";
@@ -1518,6 +1782,10 @@ function renderItemDialogColumnOptions(selectedColumns = null) {
 }
 
 function openItemDialog(mode, context = {}) {
+  if (isReadOnlyActive()) {
+    alertReadOnly();
+    return;
+  }
   if (!elements.itemDialog || !elements.itemNameInput || !elements.itemTagInput) return;
   const itemId = typeof context.itemId === "string" ? context.itemId : "";
   const item = mode === "edit" ? state.data.items.find((entry) => entry.id === itemId) ?? null : null;
@@ -1597,6 +1865,10 @@ function setTagDialogError(message) {
 }
 
 function openTagDialog() {
+  if (isReadOnlyActive()) {
+    alertReadOnly();
+    return;
+  }
   if (!elements.tagDialog) return;
   state.tagEditingId = null;
   setTagDialogError("");
@@ -1750,6 +2022,9 @@ function renderTagList() {
 
 function handleTagFormSubmit(event) {
   event.preventDefault();
+  if (guardReadOnly(event)) {
+    return;
+  }
   if (!(elements.tagNameInput instanceof HTMLInputElement)) {
     return;
   }
@@ -1779,15 +2054,24 @@ function handleTagListClick(event) {
   const tagId = target.dataset.tagId ?? target.closest(".tag-row")?.dataset.tagId ?? "";
   switch (action) {
     case "edit-tag":
+      if (guardReadOnly(event)) {
+        return;
+      }
       enterTagEditMode(tagId);
       break;
     case "cancel-tag":
       cancelTagEdit();
       break;
     case "save-tag":
+      if (guardReadOnly(event)) {
+        return;
+      }
       handleTagRename(tagId);
       break;
     case "delete-tag":
+      if (guardReadOnly(event)) {
+        return;
+      }
       handleTagDeletion(tagId);
       break;
     default:
@@ -1796,6 +2080,10 @@ function handleTagListClick(event) {
 }
 
 function enterTagEditMode(tagId) {
+  if (isReadOnlyActive()) {
+    alertReadOnly();
+    return;
+  }
   if (!tagId) return;
   state.tagEditingId = tagId;
   setTagDialogError("");
@@ -1809,6 +2097,10 @@ function cancelTagEdit() {
 }
 
 function handleTagRename(tagId) {
+  if (isReadOnlyActive()) {
+    alertReadOnly();
+    return;
+  }
   if (!tagId) return;
   const selector = `[data-tag-input='${CSS.escape(tagId)}']`;
   const input = elements.tagList?.querySelector(selector);
@@ -1833,6 +2125,10 @@ function handleTagRename(tagId) {
 }
 
 function handleTagDeletion(tagId) {
+  if (isReadOnlyActive()) {
+    alertReadOnly();
+    return;
+  }
   if (!tagId) return;
   const definition = getTagDefinitionById(tagId);
   const label = definition?.label ?? "指定のタグ";
@@ -1872,6 +2168,9 @@ function clearTagDragHoverClasses() {
 }
 
 function handleTagDragStart(event) {
+  if (guardReadOnly(event)) {
+    return;
+  }
   const handle = event.target instanceof HTMLElement ? event.target.closest(".tag-row__handle") : null;
   if (!handle) {
     return;
@@ -1896,6 +2195,12 @@ function handleTagDragStart(event) {
 }
 
 function handleTagDragOver(event) {
+  if (isReadOnlyActive()) {
+    if (event?.preventDefault) {
+      event.preventDefault();
+    }
+    return;
+  }
   if (tagDragState.sourceIndex === -1) {
     return;
   }
@@ -1927,6 +2232,14 @@ function handleTagDragLeave(event) {
 }
 
 function handleTagDrop(event) {
+  if (isReadOnlyActive()) {
+    alertReadOnly();
+    if (event?.preventDefault) {
+      event.preventDefault();
+    }
+    resetTagDragState();
+    return;
+  }
   if (tagDragState.sourceIndex === -1) {
     return;
   }
@@ -1998,6 +2311,10 @@ function setValueSetError(message) {
 }
 
 function openValueSetDialog() {
+  if (isReadOnlyActive()) {
+    alertReadOnly();
+    return;
+  }
   ensureValueSetElements();
   if (!elements.valueSetDialog) return;
   state.valueSetEditingIndex = null;
@@ -2217,6 +2534,9 @@ function renderValueSetList() {
 
 function handleValueSetFormSubmit(event) {
   event.preventDefault();
+  if (guardReadOnly(event)) {
+    return;
+  }
   ensureValueSetElements();
   if (!(elements.valueSetInput instanceof HTMLInputElement)) {
     return;
@@ -2266,6 +2586,9 @@ function handleValueSetListClick(event) {
   const index = Number(rawIndex);
   switch (action) {
     case "edit-value":
+      if (guardReadOnly(event)) {
+        return;
+      }
       if (Number.isInteger(index)) {
         enterValueSetEditMode(index);
       }
@@ -2274,11 +2597,17 @@ function handleValueSetListClick(event) {
       cancelValueSetEdit();
       break;
     case "save-value":
+      if (guardReadOnly(event)) {
+        return;
+      }
       if (Number.isInteger(index)) {
         handleValueSetRename(index);
       }
       break;
     case "delete-value":
+      if (guardReadOnly(event)) {
+        return;
+      }
       if (Number.isInteger(index)) {
         handleValueSetDeletion(index);
       }
@@ -2289,6 +2618,10 @@ function handleValueSetListClick(event) {
 }
 
 function enterValueSetEditMode(index) {
+  if (isReadOnlyActive()) {
+    alertReadOnly();
+    return;
+  }
   if (!Number.isInteger(index)) return;
   state.valueSetEditingIndex = index;
   state.valueSetPendingFocusIndex = null;
@@ -2307,6 +2640,10 @@ function cancelValueSetEdit() {
 
 function handleValueSetRename(index) {
   ensureValueSetElements();
+  if (isReadOnlyActive()) {
+    alertReadOnly();
+    return;
+  }
   if (!Number.isInteger(index)) return;
   const selector = `[data-value-input='${CSS.escape(String(index))}']`;
   const input = elements.valueSetList?.querySelector(selector);
@@ -2337,6 +2674,10 @@ function handleValueSetRename(index) {
 
 function handleValueSetDeletion(index) {
   ensureValueSetElements();
+  if (isReadOnlyActive()) {
+    alertReadOnly();
+    return;
+  }
   if (!Number.isInteger(index)) return;
   const values = getValueSetEntries();
   const currentValue = values[index] ?? null;
@@ -2368,6 +2709,9 @@ function clearValueSetDragHoverClasses() {
 }
 
 function handleValueSetDragStart(event) {
+  if (guardReadOnly(event)) {
+    return;
+  }
   ensureValueSetElements();
   const handle = event.target instanceof HTMLElement ? event.target.closest(".value-set-row__handle") : null;
   if (!handle) {
@@ -2397,6 +2741,12 @@ function handleValueSetDragStart(event) {
 }
 
 function handleValueSetDragOver(event) {
+  if (isReadOnlyActive()) {
+    if (event?.preventDefault) {
+      event.preventDefault();
+    }
+    return;
+  }
   ensureValueSetElements();
   if (valueSetDragState.sourceIndex === -1) {
     return;
@@ -2430,6 +2780,14 @@ function handleValueSetDragLeave(event) {
 }
 
 function handleValueSetDrop(event) {
+  if (isReadOnlyActive()) {
+    if (event?.preventDefault) {
+      event.preventDefault();
+    }
+    alertReadOnly();
+    resetValueSetDragState();
+    return;
+  }
   ensureValueSetElements();
   if (valueSetDragState.sourceIndex === -1) {
     return;
@@ -2511,6 +2869,9 @@ function determineFocusTarget(data, itemId, preferredColumnIds = []) {
 
 function handleItemFormSubmit(event) {
   event.preventDefault();
+  if (guardReadOnly(event)) {
+    return;
+  }
   if (!elements.itemDialog) return;
   const mode = elements.itemDialog.dataset.mode === "edit" ? "edit" : "add";
   const itemId = elements.itemDialog.dataset.itemId ?? "";
@@ -2623,6 +2984,10 @@ function adjustSelectedItemIds(nextItems) {
 }
 
 function applyDataUpdate(nextData, options = {}) {
+  if (isReadOnlyActive()) {
+    console.warn("読み取り専用モード中のため、データ更新をスキップしました。");
+    return;
+  }
   const previousColumns = state.data?.columns ?? [];
   state.data = normalizeData(nextData);
   adjustSelectedColumns(previousColumns, state.data.columns ?? [], options);
@@ -2655,6 +3020,9 @@ function createColumnRenameButton(column) {
   button.textContent = "✎";
   button.addEventListener("click", (event) => {
     event.stopPropagation();
+    if (guardReadOnly(event)) {
+      return;
+    }
     openColumnDialog("rename", { columnId: column.id, columnName: column.name });
   });
   return button;
@@ -2700,6 +3068,10 @@ function createItemDeleteButton(itemId, itemName) {
 }
 
 function handleColumnDeletion(column) {
+  if (isReadOnlyActive()) {
+    alertReadOnly();
+    return;
+  }
   const confirmed = window.confirm(`${column.name} 列を削除しますか？この列のチェック状況も削除されます。`);
   if (!confirmed) {
     return;
@@ -2715,6 +3087,10 @@ function handleColumnDeletion(column) {
 }
 
 function handleItemDeletion(itemId, itemName) {
+  if (isReadOnlyActive()) {
+    alertReadOnly();
+    return;
+  }
   const confirmed = window.confirm(`${itemName} を削除しますか？`);
   if (!confirmed) {
     return;

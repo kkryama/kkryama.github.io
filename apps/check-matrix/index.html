@@ -24,6 +24,13 @@
           <button type="button" id="manage-tags" class="button button--ghost">タグ設定</button>
           <button type="button" id="manage-value-set" class="button button--ghost">値セット設定</button>
         </div>
+        <div class="app__controls-row app__controls-row--readonly">
+          <label for="readonly-mode" class="readonly-toggle">
+            <input type="checkbox" id="readonly-mode" name="readonly-mode" aria-describedby="readonly-mode-description">
+            <span class="readonly-toggle__label">読み取り専用</span>
+          </label>
+          <span id="readonly-mode-description" class="readonly-toggle__description">編集操作を一時的に無効化します</span>
+        </div>
         <div class="app__controls-row app__controls-row--filters">
           <div class="filter-group">
             <button type="button" id="toggle-filter" class="button button--filter">列の表示切替 ▼</button>
