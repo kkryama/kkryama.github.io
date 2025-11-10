@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>BondLog</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+<body>
+  <header>
+    <div class="header-left">
+  <h1 id="app-title" tabindex="0" role="button">BondLog（デモ版）</h1>
+      <p class="app-description">
+        BondLogは、配信者とリスナーの絆（Bond）を記録（Log）するアプリです。<br />
+        プラットフォームごとに配信と来てくれたリスナーを残せます。<br />
+        サーバーにデータを置かず、使っている端末の中だけに保存される仕組みなので安心して記録できます。<br />
+        （ネットカフェなど公共の場所での利用にはご注意ください）。
+      </p>
+    </div>
+    <div class="header-right">
+      <button id="menu-button">☰</button>
+    </div>
+    <div id="menu">
+      <button id="export-btn">💾 エクスポート</button>
+      <button id="import-btn">📂 インポート</button>
+      <button id="reset-btn">🗑️ データ初期化</button>
+    </div>
+  </header>
+
+  <main id="app-main">
+    <!-- プラットフォーム & リスナー一覧 -->
+    <section id="profile-list-view" class="view active">
+      <section class="home-section" id="home-profiles">
+        <h2 class="home-section-title">プラットフォーム一覧</h2>
+        <p id="profile-empty" class="empty-state">まだプラットフォームが登録されていません</p>
+        <ul class="list" id="profile-list"></ul>
+        <button class="add-subitem" id="add-profile-btn">＋ プラットフォームを追加</button>
+      </section>
+
+      <section class="home-section" id="home-listeners">
+        <div class="home-section-header">
+          <h2 class="home-section-title">リスナー一覧</h2>
+          <div class="list-toolbar">
+            <label for="global-listener-sort">表示順</label>
+            <select id="global-listener-sort">
+              <option value="name-asc">名前（昇順）</option>
+              <option value="name-desc">名前（降順）</option>
+              <option value="last-attended-desc">最終参加日時（新しい順）</option>
+              <option value="last-attended-asc">最終参加日時（古い順）</option>
+            </select>
+          </div>
+        </div>
+        <p id="global-listener-empty" class="empty-state">まだリスナーが登録されていません</p>
+        <ul class="list" id="global-listener-list"></ul>
+        <button class="add-subitem" id="global-add-listener">＋ リスナーを追加</button>
+      </section>
+    </section>
+
+    <!-- プラットフォーム詳細 -->
+    <section id="profile-detail-view" class="view">
+      <button class="back-btn" id="back-to-profiles">← プラットフォームへ戻る</button>
+      <h2 id="profile-title"></h2>
+
+      <button class="add-subitem" id="add-listener">＋ リスナーを紐付ける</button>
+      <ul class="list" id="stream-list"></ul>
+      <button class="add-subitem" id="add-stream">＋ 配信を追加</button>
+    </section>
+
+    <!-- リスナー詳細 -->
+    <section id="listener-detail-view" class="view">
+  <button class="back-btn" id="back-to-listeners">← トップへ戻る</button>
+
+      <div class="listener-header">
+        <div class="listener-heading">
+          <h2 id="listener-name"></h2>
+          <span id="listener-profile"></span>
+        </div>
+        <div id="listener-tags" class="tag-container"></div>
+      </div>
+
+      <section class="listener-section">
+        <div class="section-title">
+          <h3>基本情報</h3>
+          <button id="listener-edit" class="secondary">編集</button>
+        </div>
+        <dl class="listener-info">
+          <div>
+            <dt>リスナー名</dt>
+            <dd id="listener-name-static"></dd>
+          </div>
+          <div>
+            <dt>URL</dt>
+            <dd id="listener-urls"></dd>
+          </div>
+          <div>
+            <dt>メモ</dt>
+            <dd id="listener-memo"></dd>
+          </div>
+        </dl>
+      </section>
+
+      <section class="listener-section">
+        <div class="section-title">
+          <h3>登場履歴</h3>
+        </div>
+        <p id="listener-attendance-empty" class="empty-state">まだ記録がありません</p>
+        <ul class="list" id="listener-attendance-list"></ul>
+      </section>
+
+      <section class="listener-section">
+        <div class="section-title">
+          <h3>ギフト履歴</h3>
+          <div class="gift-summary" id="listener-gift-summary"></div>
+        </div>
+        <p id="listener-gift-empty" class="empty-state">まだ記録がありません</p>
+        <ul class="list" id="listener-gift-list"></ul>
+      </section>
+    </section>
+
+    <!-- 配信詳細 -->
+    <section id="stream-detail-view" class="view">
+      <button class="back-btn" id="back-to-profile">← 配信一覧へ戻る</button>
+      <h2 id="stream-title"></h2>
+      <p id="stream-schedule" class="stream-meta"></p>
+      <p id="stream-url" class="stream-meta"></p>
+
+      <h3>参加リスナー</h3>
+      <ul class="list" id="attendee-list"></ul>
+      <button class="add-subitem" id="add-attendee">＋ 参加者を追加</button>
+
+      <h3>ギフト履歴</h3>
+      <ul class="list" id="gift-list"></ul>
+      <button class="add-subitem" id="add-gift">＋ ギフトを追加</button>
+    </section>
+  </main>
+
+  <div id="modal-bg">
+    <div id="modal">
+      <h3 id="modal-title">追加</h3>
+      <div id="modal-body"></div>
+      <button id="modal-cancel">キャンセル</button>
+      <button id="modal-ok" class="primary">OK</button>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
