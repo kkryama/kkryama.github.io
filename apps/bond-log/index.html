@@ -9,13 +9,7 @@
 <body>
   <header>
     <div class="header-left">
-  <h1 id="app-title" tabindex="0" role="button">BondLog（デモ版）</h1>
-      <p class="app-description">
-        BondLogは、配信者とリスナーの絆（Bond）を記録（Log）するアプリです。<br />
-        プラットフォームごとに配信と来てくれたリスナーを残せます。<br />
-        サーバーにデータを置かず、使っている端末の中だけに保存される仕組みなので安心して記録できます。<br />
-        （ネットカフェなど公共の場所での利用にはご注意ください）。
-      </p>
+  <h1 id="app-title" tabindex="0" role="button">BondLog</h1>
     </div>
     <div class="header-right">
       <button id="menu-button">☰</button>
@@ -30,6 +24,22 @@
   <main id="app-main">
     <!-- プラットフォーム & リスナー一覧 -->
     <section id="profile-list-view" class="view active">
+      <section class="home-hero" aria-label="BondLogの概要">
+        <p>BondLogは、配信者とリスナーの絆（Bond）を記録（Log）するアプリです。</p>
+        <p>プラットフォームごとに配信と来てくれたリスナーを残せます。</p>
+        <p>サーバーにデータを置かず、使っている端末の中だけに保存される仕組みなので安心して記録できます。</p>
+        <p>（ネットカフェなど公共の場所での利用にはご注意ください）。</p>
+      </section>
+      <section class="home-section" id="home-status">
+        <div class="home-section-header">
+          <h2 class="home-section-title">ステータス管理</h2>
+        </div>
+        <p class="home-section-description">リスナーステータスの定義や表示設定をまとめて確認・編集できます。</p>
+        <div class="home-status-actions">
+          <button class="primary home-status-button" id="home-status-manage">🏷️ ステータス管理を開く</button>
+        </div>
+      </section>
+
       <section class="home-section" id="home-profiles">
         <h2 class="home-section-title">プラットフォーム一覧</h2>
         <p id="profile-empty" class="empty-state">まだプラットフォームが登録されていません</p>
@@ -61,9 +71,65 @@
       <button class="back-btn" id="back-to-profiles">← プラットフォームへ戻る</button>
       <h2 id="profile-title"></h2>
 
-      <button class="add-subitem" id="add-listener">＋ リスナーを紐付ける</button>
-      <ul class="list" id="stream-list"></ul>
-      <button class="add-subitem" id="add-stream">＋ 配信を追加</button>
+  <ul class="list" id="stream-list"></ul>
+  <button class="add-subitem" id="add-stream">＋ 配信を追加</button>
+    </section>
+
+    <!-- ステータス管理 -->
+    <section id="status-management-view" class="view">
+      <button class="back-btn" id="back-to-status-home">← トップへ戻る</button>
+      <div class="status-management">
+        <div class="status-management-pane status-management-pane--list">
+          <div class="status-list-header">
+            <h2>ステータス一覧</h2>
+            <button class="secondary" id="status-add-btn">＋ ステータスを追加</button>
+          </div>
+          <div class="status-filters">
+            <label>
+              表示対象
+              <select id="status-filter-state">
+                <option value="active">アクティブのみ</option>
+                <option value="archived">アーカイブのみ</option>
+                <option value="all">全件</option>
+              </select>
+            </label>
+          </div>
+          <p id="status-empty" class="empty-state">ステータスが登録されていません</p>
+          <ul class="list status-list" id="status-list"></ul>
+        </div>
+        <div class="status-management-pane status-management-pane--editor">
+          <h2>ステータス詳細</h2>
+          <p id="status-editor-empty" class="empty-state">ステータスを選択するか、新規作成してください</p>
+          <form id="status-editor-form" class="status-editor" novalidate>
+            <input type="hidden" id="status-id" />
+            <div class="form-field">
+              <label for="status-displayName">表示名</label>
+              <input type="text" id="status-displayName" autocomplete="off" />
+            </div>
+            <div class="form-field">
+              <label for="status-description">説明</label>
+              <textarea id="status-description"></textarea>
+            </div>
+            <div class="form-field">
+              <label for="status-displayPriority">表示優先度（数値。大きいほど先頭）</label>
+              <input type="number" id="status-displayPriority" />
+            </div>
+            <div class="form-field form-field--checkbox">
+              <label>
+                <input type="checkbox" id="status-isArchived" />
+                アーカイブ済みとして表示する
+              </label>
+            </div>
+            <p id="status-usage-info" class="status-usage-info"></p>
+            <div class="status-editor-actions">
+              <button type="button" class="secondary" id="status-archive-toggle-btn">アーカイブへ移動</button>
+              <button type="button" class="secondary" id="status-reset-btn">編集内容を破棄</button>
+              <button type="button" class="danger-btn" id="status-delete-btn">完全削除</button>
+              <button type="submit" class="primary" id="status-save-btn">保存</button>
+            </div>
+          </form>
+        </div>
+      </div>
     </section>
 
     <!-- リスナー詳細 -->
@@ -72,7 +138,10 @@
 
       <div class="listener-header">
         <div class="listener-heading">
-          <h2 id="listener-name"></h2>
+          <div class="listener-heading-top">
+            <h2 id="listener-name"></h2>
+            <div id="listener-statuses" class="status-badge-container status-badge-container--compact"></div>
+          </div>
           <span id="listener-profile"></span>
         </div>
         <div id="listener-tags" class="tag-container"></div>
@@ -91,6 +160,17 @@
           <div>
             <dt>URL</dt>
             <dd id="listener-urls"></dd>
+          </div>
+          <div>
+            <dt>現在のステータス</dt>
+            <dd class="listener-status-block">
+              <div id="listener-status-current"></div>
+              <div id="listener-status-detail" class="status-detail"></div>
+              <div class="listener-status-actions">
+                <button id="listener-status-manage" class="secondary listener-status-manage-btn">ステータスを管理</button>
+                <button id="listener-status-history" class="secondary listener-status-history-btn">履歴を見る</button>
+              </div>
+            </dd>
           </div>
           <div>
             <dt>メモ</dt>

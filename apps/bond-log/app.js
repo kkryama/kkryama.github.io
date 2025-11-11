@@ -1,8 +1,12 @@
 const DB_NAME = "BondLogDB";
 const STORE_NAME = "profiles";
+const CURRENT_SCHEMA_VERSION = 2;
+
 let db,
+  schemaVersion = CURRENT_SCHEMA_VERSION,
   profiles = [],
   listeners = [],
+  statusCatalog = [],
   giftTemplates = [],
   currentProfile = null,
   currentStream = null,
@@ -46,6 +50,32 @@ const sanitizeTimeInput = raw => {
 const sanitizeUrlInput = raw => {
   if (!raw) return "";
   return String(raw).trim().slice(0, 2048);
+};
+
+const isValidIsoDateTime = value => {
+  if (typeof value !== "string") return false;
+  const trimmed = value.trim();
+  if (!trimmed) return false;
+  const parsed = new Date(trimmed);
+  return Number.isNaN(parsed.getTime()) ? false : true;
+};
+
+const normalizeIsoDateTime = value => {
+  if (!isValidIsoDateTime(typeof value === "string" ? value : String(value || ""))) return null;
+  return String(value).trim();
+};
+
+const parseIsoDateTime = value => {
+  if (!isValidIsoDateTime(typeof value === "string" ? value : String(value || ""))) return null;
+  return new Date(value);
+};
+
+// ISO 8601 文字列を日本語表示用の日時へ整形する
+const formatDateTimeForDisplay = value => {
+  if (!value) return "未記録";
+  const parsed = parseIsoDateTime(value);
+  if (!parsed) return "未記録";
+  return parsed.toLocaleString("ja-JP", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" });
 };
 
 const formatStreamSchedule = stream => {
@@ -97,7 +127,13 @@ const createDefaultGiftTemplates = () => [
   // }
 ];
 
-const createDefaultData = () => ({ profiles: [], listeners: [], giftTemplates: createDefaultGiftTemplates() });
+const createDefaultData = () => ({
+  schemaVersion: CURRENT_SCHEMA_VERSION,
+  profiles: [],
+  listeners: [],
+  statusCatalog: [],
+  giftTemplates: createDefaultGiftTemplates()
+});
 
 function openDB() {
   return new Promise((resolve, reject) => {
@@ -114,7 +150,15 @@ function openDB() {
 
 function saveAppData() {
   const tx = db.transaction(STORE_NAME, "readwrite");
-  tx.objectStore(STORE_NAME).put({ id: "main", data: { profiles, listeners, giftTemplates } });
+  schemaVersion = CURRENT_SCHEMA_VERSION;
+  const payload = {
+    schemaVersion,
+    profiles,
+    listeners,
+    statusCatalog,
+    giftTemplates
+  };
+  tx.objectStore(STORE_NAME).put({ id: "main", data: payload });
 }
 
 async function loadAppData() {
@@ -206,7 +250,7 @@ const sanitizeProfile = profile => {
 };
 
 const sanitizeListener = listener => {
-  if (!listener || typeof listener !== "object") return { id: generateId("l"), name: "", tags: [], memo: "", profileIds: [], urls: [] };
+  if (!listener || typeof listener !== "object") return { id: generateId("l"), name: "", tags: [], memo: "", profileIds: [], urls: [], statusAssignments: [] };
   const id = listener.id || generateId("l");
   const tags = Array.isArray(listener.tags)
     ? listener.tags
@@ -220,13 +264,19 @@ const sanitizeListener = listener => {
     : [];
   const name = typeof listener.name === "string" ? listener.name.trim() : "";
   const memo = typeof listener.memo === "string" ? listener.memo.slice(0, 1000) : "";
+  const statusAssignments = Array.isArray(listener.statusAssignments)
+    ? listener.statusAssignments
+        .map(sanitizeStatusAssignment)
+        .filter(Boolean)
+    : [];
   return {
     id,
     name,
     tags,
     memo,
     profileIds,
-    urls: normalizeListenerUrls(listener.urls)
+    urls: normalizeListenerUrls(listener.urls),
+    statusAssignments
   };
 };
 
@@ -243,6 +293,42 @@ const sanitizeGiftTemplate = template => {
     name: name || "テンプレート",
     item: rawItem,
     amount: rawAmount
+  };
+};
+
+const sanitizeStatusDefinition = definition => {
+  if (!definition || typeof definition !== "object") return null;
+  const id = typeof definition.id === "string" && definition.id.trim() ? definition.id.trim() : generateId("status_");
+  const displayName = typeof definition.displayName === "string" ? definition.displayName.trim() : "";
+  const description = typeof definition.description === "string" ? definition.description.trim() : "";
+  const priorityValue = Number.parseInt(definition.displayPriority, 10);
+  const displayPriority = Number.isFinite(priorityValue) ? priorityValue : 0;
+  const isArchived = Boolean(definition.isArchived);
+  return {
+    id,
+    displayName,
+    description,
+    displayPriority,
+    isArchived
+  };
+};
+
+const sanitizeStatusAssignment = assignment => {
+  if (!assignment || typeof assignment !== "object") return null;
+  const statusId = typeof assignment.statusId === "string" ? assignment.statusId.trim() : "";
+  if (!statusId) return null;
+  const source = assignment.source === "system" ? "system" : "manual";
+  const activatedAt = normalizeIsoDateTime(assignment.activatedAt);
+  const deactivatedAt = normalizeIsoDateTime(assignment.deactivatedAt);
+  const reason = typeof assignment.reason === "string" ? assignment.reason.trim() : "";
+  const note = typeof assignment.note === "string" ? assignment.note.trim() : "";
+  return {
+    statusId,
+    source,
+    activatedAt,
+    deactivatedAt,
+    reason,
+    note
   };
 };
 
@@ -276,7 +362,13 @@ const convertLegacyProfiles = legacyProfiles => {
     });
     migratedProfiles.push(sanitizedProfile);
   });
-  return { profiles: migratedProfiles, listeners: migratedListeners, giftTemplates: createDefaultGiftTemplates() };
+  return {
+    schemaVersion: 1,
+    profiles: migratedProfiles,
+    listeners: migratedListeners.map(listener => ({ ...listener, statusAssignments: listener.statusAssignments || [] })),
+    statusCatalog: [],
+    giftTemplates: createDefaultGiftTemplates()
+  };
 };
 
 const normalizeData = raw => {
@@ -291,11 +383,490 @@ const normalizeData = raw => {
         .map(sanitizeGiftTemplate)
         .filter(Boolean)
     : createDefaultGiftTemplates();
+  const sanitizedStatusesRaw = Array.isArray(raw.statusCatalog)
+    ? raw.statusCatalog
+        .map(sanitizeStatusDefinition)
+        .filter(Boolean)
+    : [];
+  const statusMap = new Map();
+  sanitizedStatusesRaw.forEach(status => {
+    if (statusMap.has(status.id)) return;
+    statusMap.set(status.id, status);
+  });
+  const sanitizedStatusCatalog = Array.from(statusMap.values());
   return {
+    schemaVersion: Number.isFinite(raw.schemaVersion) ? raw.schemaVersion : (statusMap.size > 0 ? CURRENT_SCHEMA_VERSION : 1),
     profiles: raw.profiles.map(sanitizeProfile),
     listeners: raw.listeners.map(sanitizeListener),
-    giftTemplates: sanitizedTemplates
+    giftTemplates: sanitizedTemplates,
+    statusCatalog: sanitizedStatusCatalog
   };
+};
+
+// ステータスIDから定義を取得する（未定義の場合は null）
+const getStatusDefinitionById = statusId => {
+  if (!statusId) return null;
+  return statusCatalog.find(status => status.id === statusId) || null;
+};
+
+// リスナーに対して現在有効なステータスを優先度順で取得
+const getActiveStatusEntries = listener => {
+  if (!listener || !Array.isArray(listener.statusAssignments)) return [];
+  const activeAssignments = listener.statusAssignments.filter(assignment => assignment && !assignment.deactivatedAt);
+  const entries = activeAssignments.map(assignment => ({
+    assignment,
+    definition: getStatusDefinitionById(assignment.statusId)
+  }));
+  const getPriority = entry => (entry.definition ? entry.definition.displayPriority || 0 : Number.NEGATIVE_INFINITY);
+  entries.sort((a, b) => {
+    const priorityDiff = getPriority(b) - getPriority(a);
+    if (priorityDiff !== 0) return priorityDiff;
+    const aDate = parseIsoDateTime(a.assignment.activatedAt);
+    const bDate = parseIsoDateTime(b.assignment.activatedAt);
+    const aTime = aDate ? aDate.getTime() : 0;
+    const bTime = bDate ? bDate.getTime() : 0;
+    if (aTime !== bTime) return bTime - aTime;
+    const aLabel = a.definition ? (a.definition.displayName || a.definition.id || "") : (a.assignment.statusId || "");
+    const bLabel = b.definition ? (b.definition.displayName || b.definition.id || "") : (b.assignment.statusId || "");
+    return nameCollator.compare(aLabel, bLabel);
+  });
+  return entries;
+};
+
+const findActiveStatusAssignment = (listener, statusId) => {
+  if (!listener || !Array.isArray(listener.statusAssignments)) return null;
+  for (let index = listener.statusAssignments.length - 1; index >= 0; index -= 1) {
+    const assignment = listener.statusAssignments[index];
+    if (!assignment || assignment.statusId !== statusId) continue;
+    if (!assignment.deactivatedAt) return assignment;
+  }
+  return null;
+};
+
+// ステータス未設定時のバッジ（灰色）を生成
+const createEmptyStatusBadge = (label, { size } = {}) => {
+  const badge = document.createElement("span");
+  badge.className = "status-badge status-badge--empty";
+  if (size === "compact") badge.classList.add("status-badge--compact");
+  badge.textContent = label || "ステータス未設定";
+  return badge;
+};
+
+// ステータスの表示用バッジを生成
+const createStatusBadgeElement = (entry, { size } = {}) => {
+  const badge = document.createElement("span");
+  badge.className = "status-badge";
+  if (size === "compact") badge.classList.add("status-badge--compact");
+  const { definition, assignment } = entry;
+  const labelText = definition && (definition.displayName || definition.id)
+    ? (definition.displayName || definition.id)
+    : (assignment.statusId || "未定義ステータス");
+  if (!definition) badge.classList.add("status-badge--unknown");
+  const labelSpan = document.createElement("span");
+  labelSpan.className = "status-badge-label";
+  labelSpan.textContent = labelText;
+  badge.appendChild(labelSpan);
+  const tooltipLines = [];
+  if (definition && definition.displayName) tooltipLines.push(definition.displayName);
+  if (definition && definition.description) tooltipLines.push(definition.description);
+  if (assignment.activatedAt) tooltipLines.push(`付与: ${assignment.activatedAt}`);
+  if (assignment.deactivatedAt) tooltipLines.push(`解除: ${assignment.deactivatedAt}`);
+  if (assignment.reason) tooltipLines.push(`理由: ${assignment.reason}`);
+  if (tooltipLines.length) badge.title = tooltipLines.join("\n");
+  badge.dataset.statusId = assignment.statusId;
+  return badge;
+};
+
+// 指定した DOM 要素にステータスバッジを並べるユーティリティ
+const populateStatusContainer = (element, entries, { showEmpty = false, emptyLabel = "ステータス未設定", size, limit } = {}) => {
+  if (!element) return false;
+  element.innerHTML = "";
+  element.classList.add("status-badge-container");
+  if (size === "compact") element.classList.add("status-badge-container--compact");
+  else element.classList.remove("status-badge-container--compact");
+  if (!Array.isArray(entries) || entries.length === 0) {
+    if (showEmpty) {
+      element.appendChild(createEmptyStatusBadge(emptyLabel, { size }));
+      return true;
+    }
+    return false;
+  }
+  const renderEntries = Number.isFinite(limit) && limit > 0 ? entries.slice(0, limit) : entries;
+  renderEntries.forEach(entry => {
+    element.appendChild(createStatusBadgeElement(entry, { size }));
+  });
+  return element.childElementCount > 0;
+};
+
+// === ステータスカタログ管理 UI ===
+const statusManagerState = {
+  selectedId: null,
+  stateFilter: "active",
+  formDirty: false,
+  editingMode: "none",
+  draft: null
+};
+const statusManagerRefs = {};
+let statusFormSyncing = false;
+
+// ステータスIDを衝突しないよう自動採番するユーティリティ
+const generateUniqueStatusId = () => {
+  let candidate = "";
+  do {
+    candidate = generateId("status_");
+  } while (
+    statusCatalog.some(status => status && status.id === candidate) ||
+    (statusManagerState.draft && statusManagerState.draft.id === candidate)
+  );
+  return candidate;
+};
+
+const createInitialStatusDraft = (overrides = {}) => ({
+  id: generateUniqueStatusId(),
+  displayName: "",
+  description: "",
+  displayPriority: 0,
+  isArchived: false,
+  ...overrides
+});
+
+const countStatusAssignments = statusId => {
+  if (!statusId) return 0;
+  let count = 0;
+  listeners.forEach(listener => {
+    if (!listener || !Array.isArray(listener.statusAssignments)) return;
+    listener.statusAssignments.forEach(assignment => {
+      if (assignment && assignment.statusId === statusId) count += 1;
+    });
+  });
+  return count;
+};
+
+const hasUnsavedStatusChanges = () => statusManagerState.formDirty || statusManagerState.editingMode === "draft";
+
+const confirmStatusDiscard = () => {
+  if (!hasUnsavedStatusChanges()) return true;
+  return confirm("未保存の変更があります。破棄しますか？");
+};
+
+const setStatusFormActive = isActive => {
+  if (!statusManagerRefs.form || !statusManagerRefs.editorEmptyMessage) return;
+  if (isActive) {
+    statusManagerRefs.form.classList.add("active");
+    statusManagerRefs.editorEmptyMessage.style.display = "none";
+  } else {
+    statusManagerRefs.form.classList.remove("active");
+    statusManagerRefs.editorEmptyMessage.style.display = "block";
+  }
+};
+
+const getEditingStatus = () => {
+  if (statusManagerState.editingMode === "draft" && statusManagerState.draft) return statusManagerState.draft;
+  if (statusManagerState.editingMode === "existing") {
+    return statusCatalog.find(status => status.id === statusManagerState.selectedId) || null;
+  }
+  return null;
+};
+
+const updateStatusArchiveToggleLabel = () => {
+  if (!statusManagerRefs.archiveToggle || !statusManagerRefs.isArchived) return;
+  statusManagerRefs.archiveToggle.textContent = statusManagerRefs.isArchived.checked ? "アクティブに戻す" : "アーカイブへ移動";
+};
+
+const updateStatusUsageInfo = (status, { isDraft } = {}) => {
+  if (!statusManagerRefs.usageInfo) return;
+  if (isDraft) {
+    statusManagerRefs.usageInfo.textContent = "保存後に付与状況を確認できます";
+    return;
+  }
+  if (!status) {
+    statusManagerRefs.usageInfo.textContent = "";
+    return;
+  }
+  const currentCount = countStatusAssignments(status.id);
+  statusManagerRefs.usageInfo.textContent = currentCount > 0
+    ? `現在の付与数: ${currentCount} 件`
+    : "現在付与中のリスナーはいません";
+};
+
+const populateStatusForm = (status, { isDraft } = {}) => {
+  if (!statusManagerRefs.form) return;
+  statusFormSyncing = true;
+  if (statusManagerRefs.id) statusManagerRefs.id.value = status.id || "";
+  statusManagerRefs.displayName.value = status.displayName || "";
+  statusManagerRefs.description.value = status.description || "";
+  statusManagerRefs.displayPriority.value = Number.isFinite(status.displayPriority) ? status.displayPriority : 0;
+  statusManagerRefs.isArchived.checked = Boolean(status.isArchived);
+  updateStatusArchiveToggleLabel();
+  updateStatusUsageInfo(status, { isDraft: Boolean(isDraft) });
+  statusFormSyncing = false;
+  statusManagerState.formDirty = false;
+  setStatusFormActive(true);
+  if (statusManagerRefs.deleteBtn) statusManagerRefs.deleteBtn.disabled = statusManagerState.editingMode !== "existing";
+  if (statusManagerRefs.resetBtn) statusManagerRefs.resetBtn.disabled = false;
+};
+
+const syncDraftFromForm = () => {
+  if (statusManagerState.editingMode !== "draft" || !statusManagerState.draft) return;
+  if (statusManagerRefs.displayName) {
+    statusManagerState.draft.displayName = statusManagerRefs.displayName.value.trim();
+  }
+  if (statusManagerRefs.displayPriority) {
+    const parsed = Number.parseInt(statusManagerRefs.displayPriority.value, 10);
+    statusManagerState.draft.displayPriority = Number.isFinite(parsed) ? parsed : 0;
+  }
+  if (statusManagerRefs.isArchived) {
+    statusManagerState.draft.isArchived = statusManagerRefs.isArchived.checked;
+  }
+};
+
+const renderStatusList = () => {
+  if (!statusManagerRefs.list) return;
+  const filtered = statusCatalog.filter(status => {
+    if (!status) return false;
+    const isArchived = Boolean(status.isArchived);
+    if (statusManagerState.stateFilter === "active" && isArchived) return false;
+    if (statusManagerState.stateFilter === "archived" && !isArchived) return false;
+    return true;
+  });
+  const items = [...filtered];
+  if (statusManagerState.editingMode === "draft" && statusManagerState.draft) {
+    const draftEntry = { ...statusManagerState.draft, __draft: true };
+    items.unshift(draftEntry);
+  }
+  items.sort((a, b) => {
+    if (a.__draft) return -1;
+    if (b.__draft) return 1;
+    const priorityDiff = (b.displayPriority || 0) - (a.displayPriority || 0);
+    if (priorityDiff !== 0) return priorityDiff;
+    return nameCollator.compare((a.displayName || a.id || "").trim(), (b.displayName || b.id || "").trim());
+  });
+  statusManagerRefs.list.innerHTML = "";
+  if (!items.length) {
+    if (statusManagerRefs.emptyMessage) {
+      statusManagerRefs.emptyMessage.textContent = statusCatalog.length
+        ? "条件に一致するステータスがありません"
+        : "ステータスが登録されていません";
+      statusManagerRefs.emptyMessage.style.display = "block";
+    }
+    return;
+  }
+  if (statusManagerRefs.emptyMessage) statusManagerRefs.emptyMessage.style.display = "none";
+  items.forEach(status => {
+    const li = document.createElement("li");
+    li.className = "status-list-item";
+    if (status.__draft) li.classList.add("status-list-item--draft");
+    if ((status.__draft && statusManagerState.editingMode === "draft") || (!status.__draft && status.id === statusManagerState.selectedId)) {
+      li.classList.add("selected");
+    }
+  const title = document.createElement("span");
+  title.className = "status-list-title";
+  title.textContent = status.displayName || "(名称未設定)";
+    li.appendChild(title);
+    const meta = document.createElement("div");
+    meta.className = "status-list-meta";
+    const prioritySpan = document.createElement("span");
+    prioritySpan.textContent = `優先度: ${Number.isFinite(status.displayPriority) ? status.displayPriority : 0}`;
+    meta.appendChild(prioritySpan);
+    if (status.__draft) {
+      const stateSpan = document.createElement("span");
+      stateSpan.className = "status-list-state";
+      stateSpan.textContent = "新規（未保存）";
+      meta.appendChild(stateSpan);
+    } else if (status.isArchived) {
+      const stateSpan = document.createElement("span");
+      stateSpan.className = "status-list-state";
+      stateSpan.textContent = "アーカイブ";
+      meta.appendChild(stateSpan);
+    }
+    li.appendChild(meta);
+    if (!status.__draft) {
+      li.onclick = () => {
+        if (status.id === statusManagerState.selectedId && statusManagerState.editingMode === "existing") return;
+        if (!confirmStatusDiscard()) return;
+        const target = statusCatalog.find(entry => entry.id === status.id);
+        if (!target) return;
+        statusManagerState.selectedId = target.id;
+        statusManagerState.editingMode = "existing";
+        statusManagerState.draft = null;
+        populateStatusForm(target, { isDraft: false });
+        renderStatusList();
+      };
+    }
+    statusManagerRefs.list.appendChild(li);
+  });
+};
+
+const resetStatusManager = () => {
+  statusManagerState.selectedId = null;
+  statusManagerState.stateFilter = "active";
+  statusManagerState.formDirty = false;
+  statusManagerState.editingMode = "none";
+  statusManagerState.draft = null;
+  setStatusFormActive(false);
+  if (statusManagerRefs.deleteBtn) statusManagerRefs.deleteBtn.disabled = true;
+  if (statusManagerRefs.resetBtn) statusManagerRefs.resetBtn.disabled = true;
+  if (statusManagerRefs.isArchived) statusManagerRefs.isArchived.checked = false;
+  if (statusManagerRefs.usageInfo) statusManagerRefs.usageInfo.textContent = "";
+  updateStatusArchiveToggleLabel();
+};
+
+const beginCreateStatus = () => {
+  if (!confirmStatusDiscard()) return;
+  statusManagerState.draft = createInitialStatusDraft();
+  statusManagerState.selectedId = statusManagerState.draft.id;
+  statusManagerState.editingMode = "draft";
+  populateStatusForm(statusManagerState.draft, { isDraft: true });
+  renderStatusList();
+};
+
+const collectStatusFormValues = () => {
+  if (!statusManagerRefs.form) return null;
+  let resolvedId = "";
+  if (statusManagerState.editingMode === "existing" && statusManagerState.selectedId) {
+    resolvedId = statusManagerState.selectedId;
+  } else if (statusManagerState.editingMode === "draft" && statusManagerState.draft && statusManagerState.draft.id) {
+    resolvedId = statusManagerState.draft.id;
+  } else if (statusManagerRefs.id && statusManagerRefs.id.value) {
+    resolvedId = statusManagerRefs.id.value.trim();
+  }
+  if (!resolvedId) {
+    resolvedId = generateUniqueStatusId();
+    if (statusManagerRefs.id) statusManagerRefs.id.value = resolvedId;
+    if (statusManagerState.editingMode === "draft" && statusManagerState.draft) {
+      statusManagerState.draft.id = resolvedId;
+      statusManagerState.selectedId = resolvedId;
+    }
+  }
+  const displayNameRaw = statusManagerRefs.displayName.value.trim();
+  if (!displayNameRaw) {
+    alert("表示名を入力してください");
+    return null;
+  }
+  const priorityRaw = Number.parseInt(statusManagerRefs.displayPriority.value, 10);
+  const priorityValue = Number.isFinite(priorityRaw) ? priorityRaw : 0;
+  return {
+    id: resolvedId,
+    displayName: displayNameRaw,
+    description: statusManagerRefs.description.value.trim(),
+    displayPriority: priorityValue,
+    isArchived: Boolean(statusManagerRefs.isArchived.checked)
+  };
+};
+
+const applyStatusFormSave = () => {
+  const payload = collectStatusFormValues();
+  if (!payload) return;
+  if (statusManagerState.editingMode === "draft") {
+    if (statusCatalog.some(status => status.id === payload.id)) {
+      alert("同じステータスが既に存在します");
+      return;
+    }
+    statusCatalog.push(payload);
+    statusManagerState.selectedId = payload.id;
+    statusManagerState.editingMode = "existing";
+    statusManagerState.draft = null;
+  } else if (statusManagerState.editingMode === "existing") {
+    const originalId = statusManagerState.selectedId;
+    if (payload.id !== originalId && statusCatalog.some(status => status.id === payload.id)) {
+      alert("同じステータスが既に存在します");
+      return;
+    }
+    const index = statusCatalog.findIndex(status => status.id === originalId);
+    if (index >= 0) {
+      statusCatalog[index] = payload;
+    } else {
+      statusCatalog.push(payload);
+    }
+    if (originalId && originalId !== payload.id) {
+      listeners.forEach(listener => {
+        if (!listener || !Array.isArray(listener.statusAssignments)) return;
+        listener.statusAssignments.forEach(assignment => {
+          if (assignment && assignment.statusId === originalId) assignment.statusId = payload.id;
+        });
+      });
+    }
+    statusManagerState.selectedId = payload.id;
+  } else {
+    return;
+  }
+  statusManagerState.formDirty = false;
+  saveAppData();
+  populateStatusForm(payload, { isDraft: false });
+  renderStatusList();
+  renderGlobalListeners();
+  refreshListenerDetail();
+  renderAttendees();
+};
+
+const discardStatusChanges = () => {
+  if (statusManagerState.editingMode === "draft") {
+    statusManagerState.draft = createInitialStatusDraft();
+    statusManagerState.selectedId = statusManagerState.draft.id;
+    populateStatusForm(statusManagerState.draft, { isDraft: true });
+    renderStatusList();
+    return;
+  }
+  if (statusManagerState.editingMode === "existing") {
+    const status = statusCatalog.find(entry => entry.id === statusManagerState.selectedId);
+    if (!status) {
+      resetStatusManager();
+      renderStatusList();
+      return;
+    }
+    populateStatusForm(status, { isDraft: false });
+    renderStatusList();
+  }
+};
+
+const removeStatusDefinition = () => {
+  if (statusManagerState.editingMode === "draft") {
+    statusManagerState.draft = null;
+    statusManagerState.editingMode = "none";
+    statusManagerState.selectedId = null;
+    statusManagerState.formDirty = false;
+    setStatusFormActive(false);
+    renderStatusList();
+    return;
+  }
+  if (statusManagerState.editingMode !== "existing" || !statusManagerState.selectedId) return;
+  const targetId = statusManagerState.selectedId;
+  const targetStatus = statusCatalog.find(entry => entry.id === targetId) || null;
+  const statusLabel = targetStatus && targetStatus.displayName
+    ? targetStatus.displayName
+    : "該当ステータス";
+  const usageCount = countStatusAssignments(targetId);
+  const message = usageCount > 0
+    ? `${statusLabel} を削除すると、付与履歴 ${usageCount} 件も同時に削除されます。よろしいですか？`
+    : `${statusLabel} を削除しますか？`;
+  if (!confirm(message)) return;
+  statusCatalog = statusCatalog.filter(status => status.id !== targetId);
+  listeners.forEach(listener => {
+    if (!listener || !Array.isArray(listener.statusAssignments)) return;
+    listener.statusAssignments = listener.statusAssignments.filter(assignment => assignment && assignment.statusId !== targetId);
+  });
+  statusManagerState.selectedId = null;
+  statusManagerState.editingMode = "none";
+  statusManagerState.formDirty = false;
+  setStatusFormActive(false);
+  renderStatusList();
+  saveAppData();
+  renderGlobalListeners();
+  refreshListenerDetail();
+  renderAttendees();
+};
+
+const openStatusManagement = () => {
+  resetStatusManager();
+  if (statusManagerRefs.filterState) statusManagerRefs.filterState.value = statusManagerState.stateFilter;
+  renderStatusList();
+  showView("status-management-view");
+  window.scrollTo({ top: 0, behavior: "smooth" });
+};
+
+const closeStatusManagement = () => {
+  resetStatusManager();
+  renderStatusList();
 };
 
 const createActionButton = (label, extraClass, handler) => {
@@ -576,12 +1147,22 @@ const renderGlobalListeners = () => {
     const li = document.createElement("li");
     const header = document.createElement("div");
     header.className = "list-item-header";
+    const titleBlock = document.createElement("div");
+    titleBlock.className = "list-title-block";
 
     const title = document.createElement("span");
     title.className = "list-title";
     title.textContent = listener.name || "(名称未設定)";
-    header.appendChild(title);
+    titleBlock.appendChild(title);
 
+    const statusContainer = document.createElement("div");
+    const hasStatusContent = populateStatusContainer(statusContainer, getActiveStatusEntries(listener), {
+      showEmpty: true,
+      size: "compact"
+    });
+    if (hasStatusContent) titleBlock.appendChild(statusContainer);
+
+    header.appendChild(titleBlock);
     li.appendChild(header);
 
     const tagsLine = document.createElement("div");
@@ -629,6 +1210,7 @@ const openListener = id => {
   document.getElementById("listener-memo").textContent = currentListener.memo ? currentListener.memo : "メモはまだ登録されていません";
   renderListenerUrls();
   renderListenerTags();
+  renderListenerStatuses();
   renderListenerAttendances();
   renderListenerGifts();
   showView("listener-detail-view");
@@ -651,6 +1233,260 @@ const renderListenerTags = () => {
     chip.textContent = tag;
     container.appendChild(chip);
   });
+};
+
+const renderListenerStatuses = () => {
+  if (!currentListener) return;
+  const activeEntries = getActiveStatusEntries(currentListener);
+  const headerContainer = document.getElementById("listener-statuses");
+  populateStatusContainer(headerContainer, activeEntries, { showEmpty: true, size: "compact" });
+  const detailContainer = document.getElementById("listener-status-current");
+  populateStatusContainer(detailContainer, activeEntries, { showEmpty: true });
+  renderActiveStatusDetails(activeEntries);
+};
+
+const renderActiveStatusDetails = entries => {
+  const container = document.getElementById("listener-status-detail");
+  if (!container) return;
+  container.innerHTML = "";
+  if (!Array.isArray(entries) || entries.length === 0) {
+    const empty = document.createElement("p");
+    empty.className = "status-detail-empty";
+    empty.textContent = "現在アクティブなステータスはありません";
+    container.appendChild(empty);
+    return;
+  }
+  const list = document.createElement("ul");
+  list.className = "status-detail-list";
+  entries.forEach(entry => {
+    const { assignment, definition } = entry;
+    if (!assignment) return;
+    const item = document.createElement("li");
+    item.className = "status-detail-item";
+
+    const labelText = definition
+      ? definition.displayName || "(名称未設定)"
+      : assignment.statusId || "未定義ステータス";
+    const title = document.createElement("div");
+    title.className = "status-detail-title";
+    title.textContent = labelText;
+    item.appendChild(title);
+
+    if (definition && definition.description) {
+      const description = document.createElement("div");
+      description.className = "status-detail-description";
+      description.textContent = definition.description;
+      item.appendChild(description);
+    }
+
+    const state = document.createElement("div");
+    state.className = "status-detail-meta";
+    state.textContent = "状態: 現在有効";
+    item.appendChild(state);
+
+    if (assignment.activatedAt) {
+      const activated = document.createElement("div");
+      activated.className = "status-detail-meta";
+      activated.textContent = `付与: ${formatDateTimeForDisplay(assignment.activatedAt)}`;
+      item.appendChild(activated);
+    }
+
+    list.appendChild(item);
+  });
+  container.appendChild(list);
+};
+
+const openListenerStatusManager = () => {
+  if (!currentListener) {
+    alert("リスナーを選択してから操作してください。");
+    return;
+  }
+  if (!Array.isArray(currentListener.statusAssignments)) currentListener.statusAssignments = [];
+  const activeIds = new Set();
+  currentListener.statusAssignments.forEach(assignment => {
+    if (!assignment || assignment.deactivatedAt) return;
+    activeIds.add(assignment.statusId);
+  });
+  const statusItems = [];
+  statusCatalog.forEach(status => {
+    if (!status) return;
+    const isActiveForListener = activeIds.has(status.id);
+    if (status.isArchived && !isActiveForListener) return;
+  const label = `${status.displayName || "(名称未設定)"}${status.isArchived ? "（アーカイブ）" : ""}`;
+    const priority = Number.isFinite(status.displayPriority) ? status.displayPriority : 0;
+    statusItems.push({ id: status.id, label, priority });
+  });
+  activeIds.forEach(statusId => {
+    if (statusItems.some(item => item.id === statusId)) return;
+    statusItems.push({ id: statusId, label: `${statusId}（未定義）`, priority: 0 });
+  });
+  if (statusItems.length === 0) {
+    alert("付与可能なステータスがありません。先にステータス管理から定義を作成してください。");
+    return;
+  }
+  statusItems.sort((a, b) => {
+    const priorityDiff = (b.priority || 0) - (a.priority || 0);
+    if (priorityDiff !== 0) return priorityDiff;
+    return nameCollator.compare(a.label, b.label);
+  });
+  const options = statusItems.map(item => ({ value: item.id, label: item.label }));
+  openModal("ステータス管理", [
+    {
+      name: "target",
+      label: "対象リスナー",
+      type: "static",
+      value: currentListener.name || "(名称未設定)"
+    },
+    {
+      name: "statusIds",
+      label: "付与ステータス（複数選択可）",
+      type: "checkboxes",
+      options,
+      value: Array.from(activeIds)
+    }
+  ], values => {
+    const selectedSet = new Set(Array.isArray(values.statusIds) ? values.statusIds : []);
+    let changed = false;
+
+    const addAssignment = statusId => {
+      const isoNow = new Date().toISOString();
+      currentListener.statusAssignments.push({
+        statusId,
+        source: "manual",
+        activatedAt: isoNow,
+        deactivatedAt: null,
+        reason: "",
+        note: ""
+      });
+      changed = true;
+    };
+
+    const deactivateAssignment = statusId => {
+      const assignment = findActiveStatusAssignment(currentListener, statusId);
+      if (!assignment) return;
+      assignment.deactivatedAt = new Date().toISOString();
+      changed = true;
+    };
+
+    statusItems.forEach(item => {
+      const isActive = activeIds.has(item.id);
+      const shouldBeActive = selectedSet.has(item.id);
+      if (shouldBeActive && !isActive) addAssignment(item.id);
+      if (!shouldBeActive && isActive) deactivateAssignment(item.id);
+    });
+
+    if (!changed) return;
+
+    renderGlobalListeners();
+    refreshListenerDetail();
+    renderAttendees();
+  });
+};
+
+const openListenerStatusHistory = () => {
+  if (!currentListener) {
+    alert("リスナーを選択してから操作してください。");
+    return;
+  }
+  const assignments = Array.isArray(currentListener.statusAssignments)
+    ? currentListener.statusAssignments.filter(entry => entry && entry.statusId)
+    : [];
+  const historyEntries = assignments.map(assignment => ({
+    assignment,
+    definition: getStatusDefinitionById(assignment.statusId)
+  }));
+  historyEntries.sort((a, b) => {
+    const aStart = parseIsoDateTime(a.assignment.activatedAt);
+    const bStart = parseIsoDateTime(b.assignment.activatedAt);
+    const aTime = aStart ? aStart.getTime() : 0;
+    const bTime = bStart ? bStart.getTime() : 0;
+    if (aTime !== bTime) return bTime - aTime;
+    const aLabel = a.definition ? (a.definition.displayName || a.definition.id || "") : (a.assignment.statusId || "");
+    const bLabel = b.definition ? (b.definition.displayName || b.definition.id || "") : (b.assignment.statusId || "");
+    return nameCollator.compare(aLabel, bLabel);
+  });
+
+  modalTitle.textContent = "ステータス履歴";
+  modalBody.innerHTML = "";
+
+  const target = document.createElement("p");
+  target.className = "status-history-target";
+  target.textContent = `対象リスナー: ${currentListener.name || "(名称未設定)"}`;
+  modalBody.appendChild(target);
+
+  if (historyEntries.length === 0) {
+    const empty = document.createElement("p");
+    empty.className = "status-history-empty";
+    empty.textContent = "ステータス履歴はまだ記録されていません";
+    modalBody.appendChild(empty);
+  } else {
+    const container = document.createElement("div");
+    container.className = "status-history-container";
+    const list = document.createElement("ul");
+    list.className = "status-history-list";
+    historyEntries.forEach(entry => {
+      const item = document.createElement("li");
+      item.className = "status-history-item";
+      const { assignment, definition } = entry;
+      const labelText = definition && (definition.displayName || definition.id)
+        ? definition.displayName || definition.id
+        : assignment.statusId || "未定義ステータス";
+      const header = document.createElement("div");
+      header.className = "status-history-header";
+
+      const nameLabel = document.createElement("span");
+      nameLabel.className = "status-history-name";
+      nameLabel.textContent = labelText;
+      header.appendChild(nameLabel);
+
+      const state = document.createElement("span");
+      state.className = "status-history-state";
+      if (assignment.deactivatedAt) {
+        state.classList.add("status-history-state--inactive");
+        state.textContent = "解除済み";
+      } else {
+        state.classList.add("status-history-state--active");
+        state.textContent = "現在有効";
+      }
+      header.appendChild(state);
+      item.appendChild(header);
+
+      const source = document.createElement("div");
+      source.className = "status-history-source";
+      source.textContent = `付与経路: ${assignment.source === "system" ? "自動付与" : "手動操作"}`;
+      item.appendChild(source);
+
+      const meta = document.createElement("div");
+      meta.className = "status-history-meta";
+      meta.textContent = `付与: ${formatDateTimeForDisplay(assignment.activatedAt)}`;
+      item.appendChild(meta);
+
+      if (definition && definition.description) {
+        const description = document.createElement("div");
+        description.className = "status-history-description";
+        description.textContent = `説明: ${definition.description}`;
+        item.appendChild(description);
+      }
+
+      if (assignment.deactivatedAt) {
+        const ended = document.createElement("div");
+        ended.className = "status-history-meta";
+        ended.textContent = `解除: ${formatDateTimeForDisplay(assignment.deactivatedAt)}`;
+        item.appendChild(ended);
+      }
+
+      list.appendChild(item);
+    });
+    container.appendChild(list);
+    modalBody.appendChild(container);
+  }
+
+  const okBtn = document.getElementById("modal-ok");
+  if (okBtn) {
+    okBtn.textContent = "閉じる";
+    okBtn.onclick = () => closeModal();
+  }
+  modalBg.style.display = "flex";
 };
 
 const renderListenerUrls = () => {
@@ -792,6 +1628,7 @@ const refreshListenerDetail = () => {
     : "メモはまだ登録されていません";
   renderListenerUrls();
   renderListenerTags();
+  renderListenerStatuses();
   renderListenerAttendances();
   renderListenerGifts();
 };
@@ -937,7 +1774,14 @@ function openModal(title, fields, onSubmit) {
   };
 }
 
-const closeModal = () => modalBg.style.display = "none";
+const closeModal = () => {
+  modalBg.style.display = "none";
+  const okBtn = document.getElementById("modal-ok");
+  if (okBtn) {
+    okBtn.textContent = "OK";
+    okBtn.onclick = null;
+  }
+};
 document.getElementById("modal-cancel").onclick = closeModal;
 modalBg.onclick = e => { if (e.target === modalBg) closeModal(); };
 
@@ -1003,93 +1847,6 @@ document.getElementById("add-stream").onclick = () => {
   });
 };
 
-document.getElementById("add-listener").onclick = () => {
-  const NEW_OPTION_VALUE = "__new_listener__";
-  const availableExisting = listeners.filter(listener => {
-    if (!Array.isArray(listener.profileIds)) return true;
-    return !listener.profileIds.includes(currentProfile.id);
-  });
-  const listenerOptions = [
-    { value: NEW_OPTION_VALUE, label: "＋ 新規リスナーを登録" },
-    ...availableExisting.map(listener => {
-      const memberships = Array.isArray(listener.profileIds)
-        ? listener.profileIds
-            .map(pid => profiles.find(p => p.id === pid))
-            .filter(p => Boolean(p))
-            .map(formatProfileLabel)
-        : [];
-      const suffix = memberships.length ? `（所属: ${memberships.join("、")}）` : "";
-      return {
-        value: listener.id,
-        label: `${listener.name || "(名称未設定)"}${suffix}`
-      };
-    })
-  ];
-  openModal("リスナー追加", [
-    {
-      name: "listenerSelect",
-      label: "登録方法",
-      type: "select",
-      options: listenerOptions,
-      onCreate: (element, wrapper) => {
-        wrapper.dataset.field = "listenerSelect";
-        const toggleInputs = () => {
-          const nameWrap = modalBody.querySelector('[data-field="listenerName"]');
-          const tagsWrap = modalBody.querySelector('[data-field="listenerTags"]');
-          const memoWrap = modalBody.querySelector('[data-field="listenerMemo"]');
-          const isNew = element.value === NEW_OPTION_VALUE;
-          [nameWrap, tagsWrap, memoWrap].forEach(w => { if (w) w.style.display = isNew ? "" : "none"; });
-        };
-        element.addEventListener("change", toggleInputs);
-        toggleInputs();
-      }
-    },
-    {
-      name: "name",
-      label: "リスナー名",
-      onCreate: (_element, wrapper) => { wrapper.dataset.field = "listenerName"; }
-    },
-    {
-      name: "tags",
-      label: "タグ（カンマ区切り）",
-      onCreate: (_element, wrapper) => { wrapper.dataset.field = "listenerTags"; }
-    },
-    {
-      name: "memo",
-      label: "メモ（任意）",
-      type: "textarea",
-      onCreate: (_element, wrapper) => { wrapper.dataset.field = "listenerMemo"; }
-    }
-  ], values => {
-    const mode = values.listenerSelect;
-    if (mode === NEW_OPTION_VALUE) {
-      const name = (values.name || "").trim();
-      if (!name) {
-        alert("リスナー名を入力してください");
-        return;
-      }
-      const newListener = {
-        id: generateId("l"),
-        name,
-        tags: parseTagsInput(values.tags),
-        memo: (values.memo || "").slice(0, 1000),
-        profileIds: [currentProfile.id],
-        urls: []
-      };
-      listeners.push(newListener);
-      renderGlobalListeners();
-      return;
-    }
-    const target = getListenerById(mode);
-    if (!target) {
-      alert("既存リスナーの取得に失敗しました");
-      return;
-    }
-    linkListenerToProfile(target, currentProfile.id);
-    renderGlobalListeners();
-  });
-};
-
 const globalListenerSortSelect = document.getElementById("global-listener-sort");
 if (globalListenerSortSelect) {
   globalListenerSortSelect.onchange = e => {
@@ -1132,7 +1889,8 @@ if (globalAddListenerBtn) {
         tags: parseTagsInput(values.tags),
         memo,
         profileIds: linkedProfiles,
-        urls: normalizeListenerUrls(values.urls)
+        urls: normalizeListenerUrls(values.urls),
+        statusAssignments: []
       };
       listeners.push(newListener);
       renderGlobalListeners();
@@ -1169,10 +1927,25 @@ const renderAttendees = () => {
     const header = document.createElement("div");
     header.className = "list-item-header";
 
+    const titleBlock = document.createElement("div");
+    titleBlock.className = "list-title-block";
+
     const title = document.createElement("span");
     title.className = "list-title";
     title.textContent = listener ? listener.name : "不明なリスナー";
-    header.appendChild(title);
+    titleBlock.appendChild(title);
+
+    if (listener) {
+      const statusContainer = document.createElement("div");
+      const hasStatus = populateStatusContainer(statusContainer, getActiveStatusEntries(listener), {
+        showEmpty: true,
+        size: "compact",
+        limit: 1
+      });
+      if (hasStatus) titleBlock.appendChild(statusContainer);
+    }
+
+    header.appendChild(titleBlock);
 
     const actions = document.createElement("div");
     actions.className = "list-item-actions";
@@ -1253,7 +2026,8 @@ const openAttendeeEditModal = attendeeIndex => {
         tags: [],
         memo: "",
         profileIds: [currentProfile.id],
-        urls: []
+        urls: [],
+        statusAssignments: []
       };
       listeners.push(newListener);
       currentStream.attendees[attendeeIndex] = newListener.id;
@@ -1374,7 +2148,8 @@ const openGiftEditModal = giftIndex => {
         tags: [],
         memo: "",
         profileIds: [currentProfile.id],
-        urls: []
+        urls: [],
+        statusAssignments: []
       };
       listeners.push(newListener);
       targetListenerId = newListener.id;
@@ -1433,7 +2208,15 @@ document.getElementById("add-attendee").onclick = () => {
         alert("新規リスナー名を入力してください");
         return;
       }
-  const newListener = { id: generateId("l"), name: newName, tags: [], memo: "", profileIds: [currentProfile.id], urls: [] };
+      const newListener = {
+        id: generateId("l"),
+        name: newName,
+        tags: [],
+        memo: "",
+        profileIds: [currentProfile.id],
+        urls: [],
+        statusAssignments: []
+      };
       listeners.push(newListener);
       currentStream.attendees.push(newListener.id);
       renderGlobalListeners();
@@ -1539,6 +2322,12 @@ document.getElementById("add-gift").onclick = () => {
 
 // === 戻る・メニュー ===
 const navigateHome = () => {
+  if (statusManagerRefs.view && statusManagerRefs.view.classList.contains("active")) {
+    if (hasUnsavedStatusChanges()) {
+      if (!confirmStatusDiscard()) return;
+    }
+    closeStatusManagement();
+  }
   saveAppData();
   showView("profile-list-view");
   renderProfiles();
@@ -1617,13 +2406,110 @@ document.getElementById("listener-edit").onclick = () => {
   });
 };
 
+const listenerStatusManageBtn = document.getElementById("listener-status-manage");
+if (listenerStatusManageBtn) {
+  listenerStatusManageBtn.onclick = () => openListenerStatusManager();
+}
+
+const listenerStatusHistoryBtn = document.getElementById("listener-status-history");
+if (listenerStatusHistoryBtn) {
+  listenerStatusHistoryBtn.onclick = () => openListenerStatusHistory();
+}
+
 // === メニュー ===
+statusManagerRefs.view = document.getElementById("status-management-view");
+if (statusManagerRefs.view) {
+  statusManagerRefs.list = document.getElementById("status-list");
+  statusManagerRefs.emptyMessage = document.getElementById("status-empty");
+  statusManagerRefs.editorEmptyMessage = document.getElementById("status-editor-empty");
+  statusManagerRefs.form = document.getElementById("status-editor-form");
+  statusManagerRefs.id = document.getElementById("status-id");
+  statusManagerRefs.displayName = document.getElementById("status-displayName");
+  statusManagerRefs.description = document.getElementById("status-description");
+  statusManagerRefs.displayPriority = document.getElementById("status-displayPriority");
+  statusManagerRefs.isArchived = document.getElementById("status-isArchived");
+  statusManagerRefs.archiveToggle = document.getElementById("status-archive-toggle-btn");
+  statusManagerRefs.resetBtn = document.getElementById("status-reset-btn");
+  statusManagerRefs.deleteBtn = document.getElementById("status-delete-btn");
+  statusManagerRefs.saveBtn = document.getElementById("status-save-btn");
+  statusManagerRefs.addBtn = document.getElementById("status-add-btn");
+  statusManagerRefs.usageInfo = document.getElementById("status-usage-info");
+  statusManagerRefs.filterState = document.getElementById("status-filter-state");
+  statusManagerRefs.backBtn = document.getElementById("back-to-status-home");
+
+  const handleFormChange = () => {
+    if (statusFormSyncing) return;
+    statusManagerState.formDirty = true;
+    if (statusManagerRefs.resetBtn) statusManagerRefs.resetBtn.disabled = false;
+    syncDraftFromForm();
+    updateStatusArchiveToggleLabel();
+    renderStatusList();
+  };
+
+  if (statusManagerRefs.form) {
+    statusManagerRefs.form.addEventListener("submit", event => {
+      event.preventDefault();
+      applyStatusFormSave();
+    });
+    statusManagerRefs.form.addEventListener("input", handleFormChange);
+    statusManagerRefs.form.addEventListener("change", handleFormChange);
+  }
+
+  if (statusManagerRefs.archiveToggle) {
+    statusManagerRefs.archiveToggle.onclick = () => {
+      if (!statusManagerRefs.isArchived) return;
+      statusManagerRefs.isArchived.checked = !statusManagerRefs.isArchived.checked;
+      statusManagerState.formDirty = true;
+      syncDraftFromForm();
+      updateStatusArchiveToggleLabel();
+      renderStatusList();
+    };
+  }
+
+  if (statusManagerRefs.resetBtn) statusManagerRefs.resetBtn.onclick = () => discardStatusChanges();
+  if (statusManagerRefs.deleteBtn) statusManagerRefs.deleteBtn.onclick = () => removeStatusDefinition();
+  if (statusManagerRefs.addBtn) statusManagerRefs.addBtn.onclick = () => beginCreateStatus();
+  if (statusManagerRefs.filterState) statusManagerRefs.filterState.onchange = event => {
+    statusManagerState.stateFilter = event.target.value || "active";
+    renderStatusList();
+  };
+  if (statusManagerRefs.backBtn) statusManagerRefs.backBtn.onclick = () => {
+    if (!confirmStatusDiscard()) return;
+    closeStatusManagement();
+    navigateHome();
+  };
+
+  resetStatusManager();
+  renderStatusList();
+}
+
+const requestOpenStatusManagement = () => {
+  const menuElement = document.getElementById("menu");
+  if (menuElement) menuElement.style.display = "none";
+  if (statusManagerRefs.view && statusManagerRefs.view.classList.contains("active") && hasUnsavedStatusChanges()) {
+    if (!confirmStatusDiscard()) return false;
+  }
+  openStatusManagement();
+  return true;
+};
+
+const homeStatusManageBtn = document.getElementById("home-status-manage");
+if (homeStatusManageBtn) {
+  homeStatusManageBtn.onclick = () => { requestOpenStatusManagement(); };
+}
+
 const menu=document.getElementById("menu"), menuBtn=document.getElementById("menu-button");
 menuBtn.onclick=()=>{menu.style.display=menu.style.display==="block"?"none":"block";};
 document.body.onclick=e=>{if(!menu.contains(e.target)&&e.target!==menuBtn)menu.style.display="none";};
 
 document.getElementById("export-btn").onclick=()=>{
-  const payload={profiles,listeners,giftTemplates};
+  const payload={
+    schemaVersion: CURRENT_SCHEMA_VERSION,
+    profiles,
+    listeners,
+    statusCatalog,
+    giftTemplates
+  };
   const blob=new Blob([JSON.stringify(payload,null,2)],{type:"application/json"});
   const a=document.createElement("a");
   a.href=URL.createObjectURL(blob);
@@ -1644,10 +2530,13 @@ document.getElementById("import-btn").onclick=()=>{
         const normalized=normalizeData(parsed);
         profiles=normalized.profiles;
         listeners=normalized.listeners;
-  giftTemplates=normalized.giftTemplates;
+    statusCatalog=Array.isArray(normalized.statusCatalog)?normalized.statusCatalog:[];
+    schemaVersion=Number.isFinite(normalized.schemaVersion)?normalized.schemaVersion:CURRENT_SCHEMA_VERSION;
+    giftTemplates=normalized.giftTemplates;
         currentProfile=null;
         currentStream=null;
         currentListener=null;
+    renderStatusList();
         saveAppData();
         renderProfiles();
         showView("profile-list-view");
@@ -1667,10 +2556,13 @@ document.getElementById("reset-btn").onclick=()=>{
   const defaults=createDefaultData();
   profiles=defaults.profiles;
   listeners=defaults.listeners;
+  statusCatalog=defaults.statusCatalog;
   giftTemplates=defaults.giftTemplates;
+  schemaVersion=defaults.schemaVersion;
   currentProfile=null;
   currentStream=null;
   currentListener=null;
+  renderStatusList();
   saveAppData();
   renderProfiles();
   showView("profile-list-view");
@@ -1683,12 +2575,16 @@ openDB().then(async()=>{
   const loaded=await loadAppData();
   profiles=loaded.profiles;
   listeners=loaded.listeners;
+  statusCatalog=Array.isArray(loaded.statusCatalog)?loaded.statusCatalog:[];
+  schemaVersion=Number.isFinite(loaded.schemaVersion)?loaded.schemaVersion:CURRENT_SCHEMA_VERSION;
   giftTemplates=Array.isArray(loaded.giftTemplates)?loaded.giftTemplates:createDefaultGiftTemplates();
   if(profiles.length===0&&listeners.length===0){
     const defaults=createDefaultData();
     profiles=defaults.profiles;
     listeners=defaults.listeners;
+    statusCatalog=defaults.statusCatalog;
     giftTemplates=defaults.giftTemplates;
+    schemaVersion=defaults.schemaVersion;
     saveAppData();
   }
   renderProfiles();
