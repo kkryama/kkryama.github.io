@@ -794,7 +794,7 @@ const applyStatusFormSave = () => {
   saveAppData();
   populateStatusForm(payload, { isDraft: false });
   renderStatusList();
-  renderGlobalListeners();
+  refreshCurrentView();
   refreshListenerDetail();
   renderAttendees();
 };
@@ -851,7 +851,7 @@ const removeStatusDefinition = () => {
   setStatusFormActive(false);
   renderStatusList();
   saveAppData();
-  renderGlobalListeners();
+  refreshCurrentView();
   refreshListenerDetail();
   renderAttendees();
 };
@@ -862,6 +862,7 @@ const openStatusManagement = () => {
   renderStatusList();
   showView("status-management-view");
   window.scrollTo({ top: 0, behavior: "smooth" });
+  updateTabState('status');
 };
 
 const closeStatusManagement = () => {
@@ -915,9 +916,132 @@ const showView = id => {
   document.getElementById(id).classList.add("active");
 };
 
-const renderProfiles = () => {
-  const list = document.getElementById("profile-list");
-  const emptyState = document.getElementById("profile-empty");
+// 現在表示中のビューに応じて適切なレンダリング関数を呼び出す
+const refreshCurrentView = () => {
+  const activeView = document.querySelector(".view.active");
+  if (!activeView) return;
+  
+  const viewId = activeView.id;
+  switch(viewId) {
+    case "dashboard-view":
+      renderDashboard();
+      break;
+    case "platform-list-view":
+      renderPlatformList();
+      break;
+    case "listener-list-view":
+      renderListenerList();
+      break;
+    case "listener-detail-view":
+      if (currentListener) {
+        refreshListenerDetail();
+      }
+      break;
+    // その他のビューは必要に応じて追加
+  }
+};
+
+const renderDashboard = () => {
+  // プラットフォームの簡易表示（最大3件）
+  const dashboardProfileList = document.getElementById("dashboard-profile-list");
+  const dashboardProfileEmpty = document.getElementById("dashboard-profile-empty");
+  
+  if (dashboardProfileList && dashboardProfileEmpty) {
+    dashboardProfileList.innerHTML = "";
+    const platformPreview = profiles.slice(0, 3);
+    
+    if (platformPreview.length === 0) {
+      dashboardProfileEmpty.style.display = "block";
+    } else {
+      dashboardProfileEmpty.style.display = "none";
+      platformPreview.forEach(profile => {
+        const li = document.createElement("li");
+        const header = document.createElement("div");
+        header.className = "list-item-header";
+
+        const title = document.createElement("span");
+        title.className = "list-title";
+        title.textContent = formatProfileLabel(profile);
+        header.appendChild(title);
+
+        li.appendChild(header);
+        li.onclick = () => openProfile(profile.id);
+        dashboardProfileList.appendChild(li);
+      });
+    }
+  }
+  
+  // リスナーの簡易表示（最大5件、最終参加日時順）
+  const dashboardListenerList = document.getElementById("dashboard-listener-list");
+  const dashboardListenerEmpty = document.getElementById("dashboard-listener-empty");
+  
+  if (dashboardListenerList && dashboardListenerEmpty) {
+    dashboardListenerList.innerHTML = "";
+    const latestAttendanceMap = buildLatestAttendanceMapAll();
+    
+    const compareNameAsc = (a, b) => {
+      const result = nameCollator.compare((a.name || "").trim(), (b.name || "").trim());
+      if (result !== 0) return result;
+      return (a.id || "").localeCompare(b.id || "");
+    };
+    
+    const sorted = [...listeners];
+    sorted.sort((a, b) => {
+      const aTime = latestAttendanceMap.get(a.id);
+      const bTime = latestAttendanceMap.get(b.id);
+      const aValue = typeof aTime === "number" ? aTime : Number.NEGATIVE_INFINITY;
+      const bValue = typeof bTime === "number" ? bTime : Number.NEGATIVE_INFINITY;
+      if (aValue !== bValue) return bValue - aValue;
+      return compareNameAsc(a, b);
+    });
+    
+    const listenerPreview = sorted.slice(0, 5);
+    
+    if (listenerPreview.length === 0) {
+      dashboardListenerEmpty.style.display = "block";
+    } else {
+      dashboardListenerEmpty.style.display = "none";
+      listenerPreview.forEach(listener => {
+        const li = document.createElement("li");
+        const header = document.createElement("div");
+        header.className = "list-item-header";
+        
+        const titleBlock = document.createElement("div");
+        titleBlock.className = "list-title-block";
+
+        const title = document.createElement("span");
+        title.className = "list-title";
+        title.textContent = listener.name || "(名称未設定)";
+        titleBlock.appendChild(title);
+
+        const statusContainer = document.createElement("div");
+        const hasStatusContent = populateStatusContainer(statusContainer, getActiveStatusEntries(listener), {
+          showEmpty: true,
+          size: "compact"
+        });
+        if (hasStatusContent) titleBlock.appendChild(statusContainer);
+
+        header.appendChild(titleBlock);
+        li.appendChild(header);
+
+        const tagsLine = document.createElement("div");
+        tagsLine.className = "list-sub";
+        const tagsText = Array.isArray(listener.tags) && listener.tags.length ? listener.tags.join(", ") : "タグなし";
+        tagsLine.textContent = tagsText;
+        li.appendChild(tagsLine);
+
+        li.onclick = () => openListener(listener.id);
+        dashboardListenerList.appendChild(li);
+      });
+    }
+  }
+};
+
+const renderPlatformList = () => {
+  const list = document.getElementById("platform-list");
+  const emptyState = document.getElementById("platform-empty");
+  
+  if (!list || !emptyState) return;
   
   list.innerHTML = "";
   
@@ -947,7 +1071,6 @@ const renderProfiles = () => {
     li.onclick = () => openProfile(profile.id);
     list.appendChild(li);
   });
-  renderGlobalListeners();
 };
 
 const openProfileEditor = profile => {
@@ -978,7 +1101,7 @@ const openProfileEditor = profile => {
     profile.accountName = (values.accountName || "").trim();
   profile.url = (values.url || "").trim().slice(0, 2048);
     profile.note = (values.note || "").trim().slice(0, 1000);
-    renderProfiles();
+    refreshCurrentView();
     if (currentProfile && currentProfile.id === profile.id) {
       currentProfile.platform = profile.platform;
       currentProfile.accountName = profile.accountName;
@@ -986,7 +1109,6 @@ const openProfileEditor = profile => {
       currentProfile.note = profile.note;
   document.getElementById("profile-title").textContent = formatProfileLabel(currentProfile);
   renderStreams();
-  renderGlobalListeners();
     }
   });
 };
@@ -1001,10 +1123,10 @@ const confirmDeleteProfile = profile => {
   if (currentProfile && currentProfile.id === profile.id) {
     currentProfile = null;
     currentStream = null;
-    showView("profile-list-view");
+    showView("dashboard-view");
   }
   saveAppData();
-  renderProfiles();
+  refreshCurrentView();
   refreshListenerDetail();
 };
 
@@ -1080,7 +1202,7 @@ const openStreamEditor = stream => {
       document.getElementById("stream-schedule").textContent = formatStreamSchedule(currentStream);
       updateStreamUrlLink(currentStream);
     }
-    renderGlobalListeners();
+    refreshCurrentView();
     refreshListenerDetail();
   });
 };
@@ -1095,17 +1217,17 @@ const confirmDeleteStream = stream => {
   }
   saveAppData();
   renderStreams();
-  renderGlobalListeners();
+  refreshCurrentView();
   refreshListenerDetail();
 };
 
-const renderGlobalListeners = () => {
-  const list = document.getElementById("global-listener-list");
-  const emptyMessage = document.getElementById("global-listener-empty");
+const renderListenerList = () => {
+  const list = document.getElementById("listener-list");
+  const emptyMessage = document.getElementById("listener-empty");
   if (!list || !emptyMessage) return;
   list.innerHTML = "";
   const latestAttendanceMap = buildLatestAttendanceMapAll();
-  const sortSelect = document.getElementById("global-listener-sort");
+  const sortSelect = document.getElementById("listener-sort");
   if (sortSelect) sortSelect.value = listenerSortMode;
   const compareNameAsc = (a, b) => {
     const result = nameCollator.compare((a.name || "").trim(), (b.name || "").trim());
@@ -1377,7 +1499,7 @@ const openListenerStatusManager = () => {
 
     if (!changed) return;
 
-    renderGlobalListeners();
+    refreshCurrentView();
     refreshListenerDetail();
     renderAttendees();
   });
@@ -1786,7 +1908,9 @@ document.getElementById("modal-cancel").onclick = closeModal;
 modalBg.onclick = e => { if (e.target === modalBg) closeModal(); };
 
 // === イベント ===
-document.getElementById("add-profile-btn").onclick = () => {
+const addPlatformBtn = document.getElementById("add-platform-btn");
+if (addPlatformBtn) {
+  addPlatformBtn.onclick = () => {
   openModal("プラットフォーム追加", [
     {
       name: "platform",
@@ -1817,9 +1941,10 @@ document.getElementById("add-profile-btn").onclick = () => {
       streams: []
     };
     profiles.push(newProfile);
-    renderProfiles();
+    renderPlatformList();
   });
-};
+  };
+}
 
 document.getElementById("add-stream").onclick = () => {
   openModal("配信追加", [
@@ -1851,13 +1976,21 @@ const globalListenerSortSelect = document.getElementById("global-listener-sort")
 if (globalListenerSortSelect) {
   globalListenerSortSelect.onchange = e => {
     listenerSortMode = e.target.value || "name-asc";
-    renderGlobalListeners();
+    renderDashboard();
   };
 }
 
-const globalAddListenerBtn = document.getElementById("global-add-listener");
-if (globalAddListenerBtn) {
-  globalAddListenerBtn.onclick = () => {
+const listenerSortSelect = document.getElementById("listener-sort");
+if (listenerSortSelect) {
+  listenerSortSelect.onchange = e => {
+    listenerSortMode = e.target.value || "name-asc";
+    renderListenerList();
+  };
+}
+
+const addListenerBtn = document.getElementById("add-listener-btn");
+if (addListenerBtn) {
+  addListenerBtn.onclick = () => {
     const profileOptions = profiles
       .map(profile => ({ value: profile.id, label: formatProfileLabel(profile) }))
       .sort((a, b) => nameCollator.compare(a.label || "", b.label || ""));
@@ -1893,7 +2026,7 @@ if (globalAddListenerBtn) {
         statusAssignments: []
       };
       listeners.push(newListener);
-      renderGlobalListeners();
+      renderListenerList();
     });
   };
 }
@@ -1956,7 +2089,7 @@ const renderAttendees = () => {
       currentStream.attendees.splice(index, 1);
       saveAppData();
       renderAttendees();
-      renderGlobalListeners();
+      refreshCurrentView();
       refreshListenerDetail();
     }));
     header.appendChild(actions);
@@ -2031,7 +2164,7 @@ const openAttendeeEditModal = attendeeIndex => {
       };
       listeners.push(newListener);
       currentStream.attendees[attendeeIndex] = newListener.id;
-      renderGlobalListeners();
+      refreshCurrentView();
       renderAttendees();
       refreshListenerDetail();
       return;
@@ -2044,7 +2177,7 @@ const openAttendeeEditModal = attendeeIndex => {
     linkListenerToProfile(listener, currentProfile.id);
     currentStream.attendees[attendeeIndex] = listener.id;
     renderAttendees();
-    renderGlobalListeners();
+    refreshCurrentView();
     refreshListenerDetail();
   });
 };
@@ -2075,7 +2208,7 @@ const renderGifts = () => {
       currentStream.gifts.splice(index, 1);
       saveAppData();
       renderGifts();
-      renderGlobalListeners();
+      refreshCurrentView();
       refreshListenerDetail();
     }));
     header.appendChild(actions);
@@ -2164,7 +2297,7 @@ const openGiftEditModal = giftIndex => {
     gift.item = (values.item || "").trim();
     gift.amount = (values.amount || "").trim();
     renderGifts();
-    renderGlobalListeners();
+    refreshCurrentView();
     refreshListenerDetail();
   });
 };
@@ -2219,7 +2352,7 @@ document.getElementById("add-attendee").onclick = () => {
       };
       listeners.push(newListener);
       currentStream.attendees.push(newListener.id);
-      renderGlobalListeners();
+      refreshCurrentView();
       renderAttendees();
       return;
     }
@@ -2228,7 +2361,7 @@ document.getElementById("add-attendee").onclick = () => {
     linkListenerToProfile(selectedListener, currentProfile.id);
     currentStream.attendees.push(selectedListener.id);
     renderAttendees();
-    renderGlobalListeners();
+    refreshCurrentView();
   });
 };
 
@@ -2315,23 +2448,30 @@ document.getElementById("add-gift").onclick = () => {
       amount
     });
     renderGifts();
-    renderGlobalListeners();
+    refreshCurrentView();
     refreshListenerDetail();
   });
 };
 
 // === 戻る・メニュー ===
+const isStatusViewActive = () => Boolean(statusManagerRefs.view && statusManagerRefs.view.classList.contains("active"));
+
+const maybeCloseStatusManagement = () => {
+  if (!isStatusViewActive()) return true;
+  if (hasUnsavedStatusChanges() && !confirmStatusDiscard()) return false;
+  closeStatusManagement();
+  return true;
+};
+
 const navigateHome = () => {
-  if (statusManagerRefs.view && statusManagerRefs.view.classList.contains("active")) {
-    if (hasUnsavedStatusChanges()) {
-      if (!confirmStatusDiscard()) return;
-    }
-    closeStatusManagement();
-  }
+  if (!maybeCloseStatusManagement()) return;
   saveAppData();
-  showView("profile-list-view");
-  renderProfiles();
+  showView("dashboard-view");
+  renderDashboard();
   window.scrollTo({ top: 0, behavior: "smooth" });
+  
+  // タブ状態を更新
+  updateTabState('dashboard');
 };
 
 document.getElementById("app-title").onclick = navigateHome;
@@ -2347,6 +2487,14 @@ document.getElementById("back-to-profile").onclick = ()=>{ saveAppData(); showVi
 document.getElementById("back-to-listeners").onclick = () => {
   navigateHome();
 };
+
+// 戻るボタン（専用ページ→ダッシュボード）
+document.getElementById("back-to-dashboard-from-platform").onclick = navigateHome;
+document.getElementById("back-to-dashboard-from-listener").onclick = navigateHome;
+
+// 「すべて見る」ボタン
+document.getElementById("dashboard-view-all-platforms").onclick = () => switchToTab('platform');
+document.getElementById("dashboard-view-all-listeners").onclick = () => switchToTab('listener');
 document.getElementById("listener-edit").onclick = () => {
   if (!currentListener) return;
   const urlsValue = Array.isArray(currentListener.urls) ? currentListener.urls.join("\n") : "";
@@ -2402,7 +2550,7 @@ document.getElementById("listener-edit").onclick = () => {
     currentListener.memo = memo;
     currentListener.profileIds = selectedProfiles;
     refreshListenerDetail();
-    renderGlobalListeners();
+    refreshCurrentView();
   });
 };
 
@@ -2493,11 +2641,6 @@ const requestOpenStatusManagement = () => {
   return true;
 };
 
-const homeStatusManageBtn = document.getElementById("home-status-manage");
-if (homeStatusManageBtn) {
-  homeStatusManageBtn.onclick = () => { requestOpenStatusManagement(); };
-}
-
 const menu=document.getElementById("menu"), menuBtn=document.getElementById("menu-button");
 menuBtn.onclick=()=>{menu.style.display=menu.style.display==="block"?"none":"block";};
 document.body.onclick=e=>{if(!menu.contains(e.target)&&e.target!==menuBtn)menu.style.display="none";};
@@ -2538,8 +2681,8 @@ document.getElementById("import-btn").onclick=()=>{
         currentListener=null;
     renderStatusList();
         saveAppData();
-        renderProfiles();
-        showView("profile-list-view");
+        renderDashboard();
+        showView("dashboard-view");
         alert("インポート完了");
       }catch(err){
         console.error(err);
@@ -2564,8 +2707,8 @@ document.getElementById("reset-btn").onclick=()=>{
   currentListener=null;
   renderStatusList();
   saveAppData();
-  renderProfiles();
-  showView("profile-list-view");
+  renderDashboard();
+  showView("dashboard-view");
   menu.style.display="none";
   alert("データを初期化しました");
 };
@@ -2587,5 +2730,63 @@ openDB().then(async()=>{
     schemaVersion=defaults.schemaVersion;
     saveAppData();
   }
-  renderProfiles();
+  renderDashboard();
+  initTabNavigation();
 });
+
+// タブナビゲーション機能
+function initTabNavigation() {
+  const tabButtons = document.querySelectorAll('.tab-btn');
+  tabButtons.forEach(btn => {
+    btn.addEventListener('click', () => {
+      const target = btn.getAttribute('data-page-target');
+      switchToTab(target);
+    });
+  });
+}
+
+function updateTabState(target) {
+  // すべてのタブボタンの選択状態を解除
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    const btnTarget = btn.getAttribute('data-page-target');
+    if (btnTarget === target) {
+      btn.classList.add('active');
+      btn.setAttribute('aria-selected', 'true');
+    } else {
+      btn.classList.remove('active');
+      btn.setAttribute('aria-selected', 'false');
+    }
+  });
+}
+
+function handleTabNavigation(target) {
+  switch(target) {
+    case 'dashboard':
+      navigateHome();
+      return true;
+    case 'platform':
+      if (!maybeCloseStatusManagement()) return false;
+      showView('platform-list-view');
+      renderPlatformList();
+      return true;
+    case 'listener':
+      if (!maybeCloseStatusManagement()) return false;
+      showView('listener-list-view');
+      renderListenerList();
+      return true;
+    case 'status':
+      return requestOpenStatusManagement();
+    default:
+      return false;
+  }
+}
+
+function switchToTab(target) {
+  const prevTarget = document.querySelector('.tab-btn.active')?.getAttribute('data-page-target') || 'dashboard';
+  const switched = handleTabNavigation(target);
+  if (switched) {
+    updateTabState(target);
+  } else {
+    updateTabState(prevTarget);
+  }
+}

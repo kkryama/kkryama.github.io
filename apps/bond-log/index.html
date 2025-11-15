@@ -7,9 +7,9 @@
     <link rel="stylesheet" href="style.css" />
   </head>
 <body>
-  <header>
+  <header class="app-header bg-brand-teal">
     <div class="header-left">
-  <h1 id="app-title" tabindex="0" role="button">BondLog</h1>
+      <h1 id="app-title" tabindex="0" role="button">BondLog</h1>
     </div>
     <div class="header-right">
       <button id="menu-button">☰</button>
@@ -21,49 +21,102 @@
     </div>
   </header>
 
+  <nav class="page-nav">
+    <div class="page-nav__inner">
+      <button class="tab-btn active" data-page-target="dashboard" aria-selected="true">
+        <span class="tab-btn__icon">🏠</span>
+        <span class="tab-btn__label">
+          <span class="tab-btn__label--short">ダッシュボード</span>
+          <span class="tab-btn__label--full">ダッシュボード</span>
+        </span>
+      </button>
+      <button class="tab-btn" data-page-target="platform" aria-selected="false">
+        <span class="tab-btn__icon">📺</span>
+        <span class="tab-btn__label">
+          <span class="tab-btn__label--short">プラットフォーム</span>
+          <span class="tab-btn__label--full">プラットフォーム一覧</span>
+        </span>
+      </button>
+      <button class="tab-btn" data-page-target="listener" aria-selected="false">
+        <span class="tab-btn__icon">👤</span>
+        <span class="tab-btn__label">
+          <span class="tab-btn__label--short">リスナー</span>
+          <span class="tab-btn__label--full">リスナー一覧</span>
+        </span>
+      </button>
+      <button class="tab-btn" data-page-target="status" aria-selected="false">
+        <span class="tab-btn__icon">🏷️</span>
+        <span class="tab-btn__label">
+          <span class="tab-btn__label--short">ステータス</span>
+          <span class="tab-btn__label--full">ステータス管理</span>
+        </span>
+      </button>
+    </div>
+  </nav>
+
   <main id="app-main">
-    <!-- プラットフォーム & リスナー一覧 -->
-    <section id="profile-list-view" class="view active">
+    <!-- ダッシュボード -->
+    <section id="dashboard-view" class="view active">
       <section class="home-hero" aria-label="BondLogの概要">
-        <p>BondLogは、配信者とリスナーの絆（Bond）を記録（Log）するアプリです。</p>
-        <p>プラットフォームごとに配信と来てくれたリスナーを残せます。</p>
-        <p>サーバーにデータを置かず、使っている端末の中だけに保存される仕組みなので安心して記録できます。</p>
-        <p>（ネットカフェなど公共の場所での利用にはご注意ください）。</p>
-      </section>
-      <section class="home-section" id="home-status">
-        <div class="home-section-header">
-          <h2 class="home-section-title">ステータス管理</h2>
-        </div>
-        <p class="home-section-description">リスナーステータスの定義や表示設定をまとめて確認・編集できます。</p>
-        <div class="home-status-actions">
-          <button class="primary home-status-button" id="home-status-manage">🏷️ ステータス管理を開く</button>
-        </div>
+        <p>BondLogは、配信者とリスナーの絆(Bond)を記録(Log)するアプリです。</p>
+        <p>プラットフォームごとに配信と参加してくれたリスナーを記録できます。</p>
+        <p>
+          <strong>プライバシー保護:</strong> 
+          サーバーにデータを送信せず、すべてお使いの端末内にのみ保存されます。
+          <br>
+          ※ 公共の端末(ネットカフェなど)でのご利用にはご注意ください。
+        </p>
+        <p>
+          <a href="UserGuide.html" target="_blank" rel="noopener noreferrer">📖 使い方ガイドを見る</a>
+        </p>
       </section>
 
       <section class="home-section" id="home-profiles">
-        <h2 class="home-section-title">プラットフォーム一覧</h2>
-        <p id="profile-empty" class="empty-state">まだプラットフォームが登録されていません</p>
-        <ul class="list" id="profile-list"></ul>
-        <button class="add-subitem" id="add-profile-btn">＋ プラットフォームを追加</button>
+        <div class="home-section-header">
+          <h2 class="home-section-title">プラットフォーム</h2>
+          <button class="secondary" id="dashboard-view-all-platforms">すべて見る</button>
+        </div>
+        <p id="dashboard-profile-empty" class="empty-state">まだプラットフォームが登録されていません</p>
+        <ul class="list" id="dashboard-profile-list"></ul>
       </section>
 
       <section class="home-section" id="home-listeners">
         <div class="home-section-header">
-          <h2 class="home-section-title">リスナー一覧</h2>
-          <div class="list-toolbar">
-            <label for="global-listener-sort">表示順</label>
-            <select id="global-listener-sort">
-              <option value="name-asc">名前（昇順）</option>
-              <option value="name-desc">名前（降順）</option>
-              <option value="last-attended-desc">最終参加日時（新しい順）</option>
-              <option value="last-attended-asc">最終参加日時（古い順）</option>
-            </select>
-          </div>
+          <h2 class="home-section-title">リスナー</h2>
+          <button class="secondary" id="dashboard-view-all-listeners">すべて見る</button>
         </div>
-        <p id="global-listener-empty" class="empty-state">まだリスナーが登録されていません</p>
-        <ul class="list" id="global-listener-list"></ul>
-        <button class="add-subitem" id="global-add-listener">＋ リスナーを追加</button>
+        <p id="dashboard-listener-empty" class="empty-state">まだリスナーが登録されていません</p>
+        <ul class="list" id="dashboard-listener-list"></ul>
       </section>
+    </section>
+
+    <!-- プラットフォーム一覧 -->
+    <section id="platform-list-view" class="view">
+      <button class="back-btn" id="back-to-dashboard-from-platform">← ダッシュボードへ戻る</button>
+      <h2>プラットフォーム一覧</h2>
+      <p id="platform-empty" class="empty-state">まだプラットフォームが登録されていません</p>
+      <ul class="list" id="platform-list"></ul>
+      <button class="add-subitem" id="add-platform-btn">＋ プラットフォームを追加</button>
+    </section>
+
+    <!-- リスナー一覧 -->
+    <section id="listener-list-view" class="view">
+      <button class="back-btn" id="back-to-dashboard-from-listener">← ダッシュボードへ戻る</button>
+      <div class="page-header">
+        <h2>リスナー一覧</h2>
+        <div class="list-toolbar">
+          <label for="listener-sort">表示順</label>
+          <select id="listener-sort">
+            <option value="name-asc">名前（昇順）</option>
+            <option value="name-desc">名前（降順）</option>
+            <option value="last-attended-desc">最終参加日時（新しい順）</option>
+            <option value="last-attended-asc">最終参加日時（古い順）</option>
+          </select>
+        </div>
+      </div>
+      <p id="listener-empty" class="empty-state">まだリスナーが登録されていません</p>
+      <ul class="list" id="listener-list"></ul>
+      <button class="add-subitem" id="add-listener-btn">＋ リスナーを追加</button>
     </section>
 
     <!-- プラットフォーム詳細 -->
@@ -181,7 +234,7 @@
 
       <section class="listener-section">
         <div class="section-title">
-          <h3>登場履歴</h3>
+          <h3>参加履歴</h3>
         </div>
         <p id="listener-attendance-empty" class="empty-state">まだ記録がありません</p>
         <ul class="list" id="listener-attendance-list"></ul>
