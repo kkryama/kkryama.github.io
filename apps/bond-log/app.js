@@ -1786,7 +1786,14 @@ function openModal(title, fields, onSubmit) {
     wrapper.className = "modal-field";
     if (f.hidden) wrapper.style.display = "none";
     const labelText = f.label || "";
-    if (labelText) {
+    const isSingleCheckbox = f.type === "checkbox";
+    let checkboxLabelWrapper = null;
+    if (isSingleCheckbox) {
+      wrapper.classList.add("modal-field--checkbox");
+      checkboxLabelWrapper = document.createElement("label");
+      checkboxLabelWrapper.className = "modal-checkbox-inline";
+      wrapper.appendChild(checkboxLabelWrapper);
+    } else if (labelText) {
       const label = document.createElement("div");
       label.className = "modal-label";
       label.textContent = labelText;
@@ -1849,6 +1856,10 @@ function openModal(title, fields, onSubmit) {
           element.appendChild(optionWrapper);
         });
       }
+    } else if (f.type === "checkbox") {
+      element = document.createElement("input");
+      element.type = "checkbox";
+      element.checked = Boolean(f.value);
     } else if (f.type === "static") {
       element = document.createElement("div");
       element.className = "modal-static";
@@ -1863,10 +1874,19 @@ function openModal(title, fields, onSubmit) {
       element.placeholder = f.placeholder || labelText;
     }
     element.id = f.name;
-    if (f.value !== undefined && !["static", "checkboxes"].includes(f.type || "")) {
+    if (f.value !== undefined && !["static", "checkboxes", "checkbox"].includes(f.type || "")) {
       element.value = f.value;
     }
-    wrapper.appendChild(element);
+    if (isSingleCheckbox && checkboxLabelWrapper) {
+      checkboxLabelWrapper.appendChild(element);
+      if (labelText) {
+        const checkboxText = document.createElement("span");
+        checkboxText.textContent = labelText;
+        checkboxLabelWrapper.appendChild(checkboxText);
+      }
+    } else {
+      wrapper.appendChild(element);
+    }
     if (typeof f.onCreate === "function") f.onCreate(element, wrapper);
     modalBody.appendChild(wrapper);
     if (f.type === "select" && f.value !== undefined) element.value = f.value;
@@ -1878,6 +1898,10 @@ function openModal(title, fields, onSubmit) {
       const el = document.getElementById(f.name);
       if (!el) {
         values[f.name] = "";
+        return;
+      }
+      if (f.type === "checkbox") {
+        values[f.name] = Boolean(el.checked);
         return;
       }
       if (el.dataset && el.dataset.checkboxGroup === "true") {
@@ -2304,9 +2328,18 @@ const openGiftEditModal = giftIndex => {
 
 document.getElementById("add-attendee").onclick = () => {
   const NEW_OPTION_VALUE = "__new_listener__";
-  const listenerEntries = getProfileListeners(currentProfile.id).map(l => ({ id: l.id, name: l.name || "" }));
+  const attendeeIds = new Set(Array.isArray(currentStream && currentStream.attendees) ? currentStream.attendees : []);
+  const listenerEntries = getProfileListeners(currentProfile.id)
+    .filter(listener => listener && !attendeeIds.has(listener.id))
+    .map(l => ({ id: l.id, name: l.name || "" }));
   const hasExisting = listenerEntries.length > 0;
   openModal("参加者追加", [
+    {
+      name: "showAllListeners",
+      label: "他のプラットフォームのリスナーも表示",
+      type: "checkbox",
+      value: false
+    },
     {
       name: "listenerSelect",
       label: "リスナーを選択",
@@ -2316,12 +2349,47 @@ document.getElementById("add-attendee").onclick = () => {
         : [{ value: NEW_OPTION_VALUE, label: "＋ 新規リスナーを追加" }],
       onCreate: (element, wrapper) => {
         wrapper.dataset.field = "listenerSelect";
+        const getAvailableCandidates = showAll => {
+          const source = showAll ? listeners : getProfileListeners(currentProfile.id);
+          return source.filter(listener => listener && !attendeeIds.has(listener.id));
+        };
         const toggleInput = () => {
           const inputWrap = modalBody.querySelector('[data-field="listenerNew"]');
           if (!inputWrap) return;
           inputWrap.style.display = element.value === NEW_OPTION_VALUE ? "" : "none";
         };
+        const checkbox = document.getElementById("showAllListeners");
+        const rebuildOptions = () => {
+          const showAll = checkbox ? checkbox.checked : false;
+          const candidates = getAvailableCandidates(showAll);
+          const previousValue = element.value;
+          element.innerHTML = "";
+          candidates
+            .slice()
+            .sort((a, b) => nameCollator.compare(a.name || "", b.name || ""))
+            .forEach(listener => {
+              const opt = document.createElement("option");
+              opt.value = listener.id;
+              opt.textContent = listener.name || "(名称未設定)";
+              element.appendChild(opt);
+            });
+          const newOpt = document.createElement("option");
+          newOpt.value = NEW_OPTION_VALUE;
+          newOpt.textContent = "＋ 新規リスナーを追加";
+          element.appendChild(newOpt);
+          const optionValues = Array.from(element.options).map(opt => opt.value);
+          if (previousValue && optionValues.includes(previousValue)) {
+            element.value = previousValue;
+          } else if (candidates.length > 0) {
+            element.selectedIndex = 0;
+          } else {
+            element.value = NEW_OPTION_VALUE;
+          }
+          toggleInput();
+        };
         element.addEventListener("change", toggleInput);
+        if (checkbox) checkbox.addEventListener("change", rebuildOptions);
+        rebuildOptions();
         toggleInput();
       }
     },

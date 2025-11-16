@@ -1,0 +1,369 @@
+{
+  "schemaVersion": 2,
+  "profiles": [
+    {
+      "id": "p1",
+      "platform": "YouTube",
+      "accountName": "ゲーム実況ch",
+      "url": "https://www.youtube.com/@bond_log_demo_game",
+      "note": "週末の夜にゲーム配信。レトロゲーム中心",
+      "streams": [
+        {
+          "id": "s1",
+          "title": "レトロアクション64 RTA練習",
+          "date": "2025-11-01",
+          "startTime": "20:00",
+          "url": "https://www.youtube.com/watch?v=bond_log_demo001",
+          "attendees": ["l1", "l2", "l5", "l6"],
+          "gifts": [
+            {
+              "listenerId": "l1",
+              "item": "スーパーチャット",
+              "amount": "500"
+            },
+            {
+              "listenerId": "l5",
+              "item": "スーパーチャット",
+              "amount": "1000"
+            }
+          ]
+        },
+        {
+          "id": "s2",
+          "title": "リスナー参加型！レーシングバトル8",
+          "date": "2025-11-08",
+          "startTime": "21:00",
+          "url": "https://www.youtube.com/watch?v=bond_log_demo002",
+          "attendees": ["l1", "l2", "l3", "l5"],
+          "gifts": [
+            {
+              "listenerId": "l2",
+              "item": "メンバーシップ",
+              "amount": "490"
+            },
+            {
+              "listenerId": "l1",
+              "item": "スーパーチャット",
+              "amount": "2000"
+            }
+          ]
+        },
+        {
+          "id": "s3",
+          "title": "【雑談】最近買ったゲームの話",
+          "date": "2025-11-10",
+          "startTime": "19:30",
+          "url": "",
+          "attendees": ["l1", "l5", "l6"],
+          "gifts": []
+        },
+        {
+          "id": "s4",
+          "title": "勇者の冒険譚 初見プレイ #1",
+          "date": "2025-11-15",
+          "startTime": "20:00",
+          "url": "https://www.youtube.com/watch?v=bond_log_demo004",
+          "attendees": ["l1", "l2", "l5", "l6", "l7"],
+          "gifts": [
+            {
+              "listenerId": "l5",
+              "item": "スーパーチャット",
+              "amount": "1000"
+            },
+            {
+              "listenerId": "l7",
+              "item": "スーパーチャット",
+              "amount": "500"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "p2",
+      "platform": "YouTube",
+      "accountName": "まったり雑談部屋",
+      "url": "https://www.youtube.com/@bond_log_demo_zatsudan",
+      "note": "平日夜に雑談や歌枠。リスナーとの会話重視",
+      "streams": [
+        {
+          "id": "s5",
+          "title": "今日の出来事を話そう",
+          "date": "2025-11-03",
+          "startTime": "22:00",
+          "url": "",
+          "attendees": ["l3", "l4", "l5", "l8"],
+          "gifts": [
+            {
+              "listenerId": "l5",
+              "item": "スーパーチャット",
+              "amount": "100"
+            },
+            {
+              "listenerId": "l4",
+              "item": "スーパーチャット",
+              "amount": "500"
+            }
+          ]
+        },
+        {
+          "id": "s6",
+          "title": "リクエスト歌枠🎤",
+          "date": "2025-11-07",
+          "startTime": "21:30",
+          "url": "",
+          "attendees": ["l3", "l4", "l5", "l9"],
+          "gifts": [
+            {
+              "listenerId": "l3",
+              "item": "スーパーチャット",
+              "amount": "1000"
+            },
+            {
+              "listenerId": "l5",
+              "item": "スーパーチャット",
+              "amount": "300"
+            },
+            {
+              "listenerId": "l9",
+              "item": "スーパーチャット",
+              "amount": "50"
+            }
+          ]
+        },
+        {
+          "id": "s7",
+          "title": "深夜のまったり雑談",
+          "date": "2025-11-12",
+          "startTime": "23:00",
+          "url": "",
+          "attendees": ["l3", "l4", "l8"],
+          "gifts": []
+        },
+        {
+          "id": "s8",
+          "title": "お悩み相談室📝",
+          "date": "2025-11-14",
+          "startTime": "22:00",
+          "url": "",
+          "attendees": ["l3", "l4", "l5", "l8", "l9"],
+          "gifts": [
+            {
+              "listenerId": "l4",
+              "item": "スーパーチャット",
+              "amount": "500"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "listeners": [
+    {
+      "id": "l1",
+      "name": "たかしさん",
+      "tags": ["常連", "モデレーター"],
+      "memo": "配信初期からの常連リスナー。コメントでの盛り上げ役",
+      "urls": ["https://twitter.com/bond_log_demo_takashi"],
+      "profileIds": ["p1"],
+      "statusAssignments": [
+        {
+          "statusId": "st1",
+          "source": "manual",
+          "activatedAt": "2025-10-01T12:00:00+09:00",
+          "deactivatedAt": null,
+          "reason": "",
+          "note": ""
+        },
+        {
+          "statusId": "st2",
+          "source": "manual",
+          "activatedAt": "2025-10-15T20:00:00+09:00",
+          "deactivatedAt": null,
+          "reason": "",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "id": "l2",
+      "name": "ゆかりん",
+      "tags": ["常連"],
+      "memo": "週末配信の常連。レーシングゲームが得意",
+      "urls": [],
+      "profileIds": ["p1"],
+      "statusAssignments": [
+        {
+          "statusId": "st2",
+          "source": "manual",
+          "activatedAt": "2025-11-08T21:00:00+09:00",
+          "deactivatedAt": null,
+          "reason": "",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "id": "l3",
+      "name": "まさき",
+      "tags": ["常連", "歌枠好き"],
+      "memo": "サブチャンネルでの常連。音楽の話題が好き",
+      "urls": ["https://twitter.com/bond_log_demo_masaki"],
+      "profileIds": ["p2"],
+      "statusAssignments": [
+        {
+          "statusId": "st1",
+          "source": "manual",
+          "activatedAt": "2025-09-15T10:00:00+09:00",
+          "deactivatedAt": null,
+          "reason": "",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "id": "l4",
+      "name": "あいちゃん",
+      "tags": ["応援団長"],
+      "memo": "毎回コメントをくれる熱心なリスナー",
+      "urls": [],
+      "profileIds": ["p2"],
+      "statusAssignments": [
+        {
+          "statusId": "st3",
+          "source": "manual",
+          "activatedAt": "2025-10-20T22:00:00+09:00",
+          "deactivatedAt": null,
+          "reason": "",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "id": "l5",
+      "name": "けんた",
+      "tags": ["常連", "マルチ視聴者"],
+      "memo": "メインチャンネルとサブチャンネル両方で視聴してくれる貴重なリスナー",
+      "urls": ["https://twitter.com/bond_log_demo_kenta", "https://instagram.com/bond_log_demo_kenta"],
+      "profileIds": ["p1", "p2"],
+      "statusAssignments": [
+        {
+          "statusId": "st1",
+          "source": "manual",
+          "activatedAt": "2025-09-01T18:00:00+09:00",
+          "deactivatedAt": null,
+          "reason": "",
+          "note": ""
+        },
+        {
+          "statusId": "st2",
+          "source": "manual",
+          "activatedAt": "2025-10-01T20:00:00+09:00",
+          "deactivatedAt": null,
+          "reason": "",
+          "note": ""
+        },
+        {
+          "statusId": "st4",
+          "source": "manual",
+          "activatedAt": "2025-08-01T10:00:00+09:00",
+          "deactivatedAt": "2025-10-31T23:59:59+09:00",
+          "reason": "",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "id": "l6",
+      "name": "ひろし",
+      "tags": ["新規"],
+      "memo": "最近参加し始めたリスナー",
+      "urls": [],
+      "profileIds": ["p1"],
+      "statusAssignments": []
+    },
+    {
+      "id": "l7",
+      "name": "さやか",
+      "tags": [],
+      "memo": "",
+      "urls": [],
+      "profileIds": ["p1"],
+      "statusAssignments": []
+    },
+    {
+      "id": "l8",
+      "name": "としお",
+      "tags": ["深夜組"],
+      "memo": "深夜配信によく来てくれる",
+      "urls": [],
+      "profileIds": ["p2"],
+      "statusAssignments": []
+    },
+    {
+      "id": "l9",
+      "name": "みゆき",
+      "tags": ["新規"],
+      "memo": "",
+      "urls": [],
+      "profileIds": ["p2"],
+      "statusAssignments": []
+    }
+  ],
+  "statusCatalog": [
+    {
+      "id": "st1",
+      "displayName": "ファンクラブ会員",
+      "description": "月額500円のファンクラブに加入しているリスナー",
+      "displayPriority": 100,
+      "isArchived": false
+    },
+    {
+      "id": "st2",
+      "displayName": "メンバーシップ",
+      "description": "YouTubeメンバーシップ加入者",
+      "displayPriority": 90,
+      "isArchived": false
+    },
+    {
+      "id": "st3",
+      "displayName": "応援団",
+      "description": "特に熱心に応援してくれるリスナー",
+      "displayPriority": 80,
+      "isArchived": false
+    },
+    {
+      "id": "st4",
+      "displayName": "初回限定特典",
+      "description": "初月キャンペーンで付与（期間限定）",
+      "displayPriority": 50,
+      "isArchived": true
+    }
+  ],
+  "giftTemplates": [
+    {
+      "id": "gt1",
+      "name": "スーパーチャット（¥500）",
+      "item": "スーパーチャット",
+      "amount": "500"
+    },
+    {
+      "id": "gt2",
+      "name": "スーパーチャット（¥1,000）",
+      "item": "スーパーチャット",
+      "amount": "1000"
+    },
+    {
+      "id": "gt3",
+      "name": "スーパーチャット（¥100）",
+      "item": "スーパーチャット",
+      "amount": "100"
+    },
+    {
+      "id": "gt4",
+      "name": "スーパーチャット（¥2,000）",
+      "item": "スーパーチャット",
+      "amount": "2000"
+    }
+  ]
+}
