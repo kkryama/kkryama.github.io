@@ -458,13 +458,15 @@ button.danger-btn:active {
   transform: translateY(0);
 }
 
-.status-management { display: flex; flex-direction: column; gap: 24px; max-width: 960px; margin: 0 auto; }
-.status-management-pane { background: var(--bond-bg-white); border-radius: 8px; box-shadow: 0 1px 3px var(--bond-shadow); padding: 16px; width: 100%; }
-.status-management-pane--editor { flex: none; }
-.status-list-header { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 16px; }
-.status-filters { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 12px; font-size: 14px; color: var(--bond-muted); }
-.status-filters label { display: flex; flex-direction: column; gap: 4px; }
-.status-filters select { min-width: 180px; }
+.status-list-header { display: flex; flex-direction: column; gap: 12px; margin-bottom: 16px; }
+.status-list-header-top { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.status-detail-view { max-width: 960px; margin: 0 auto; }
+.platform-list-header { display: flex; flex-direction: column; gap: 12px; margin-bottom: 16px; }
+.platform-list-header-top { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.listener-list-header { display: flex; flex-direction: column; gap: 12px; margin-bottom: 16px; }
+.listener-list-header-top { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.profile-header { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 16px; }
+.section-header { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 8px; }
 .status-list { max-height: 380px; overflow-y: auto; }
 .status-list li { display: flex; flex-direction: column; gap: 4px; }
 .status-list li.selected { outline: 2px solid var(--bond-teal); }
@@ -480,6 +482,11 @@ button.danger-btn:active {
 .form-field--checkbox label { flex-direction: row; align-items: center; gap: 8px; }
 .status-editor textarea { min-height: 90px; }
 .status-editor-actions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
+.button-description { margin-top: 12px; }
+.description-text { font-size: 0.9em; color: var(--bond-muted); text-align: right; }
+.warning-text { color: var(--bond-danger); font-weight: bold; text-align: right; }
+.button-help-text { font-size: 0.85em; color: var(--bond-muted); margin: 4px 0 0 0; }
+.button-warning-text { font-size: 0.85em; color: var(--bond-danger); margin: 4px 0 0 0; }
 .status-usage-info { font-size: 13px; color: var(--bond-muted); margin: 0; }
 .status-history-container { display: flex; flex-direction: column; gap: 12px; max-height: 360px; overflow-y: auto; }
 .status-history-target { font-size: 14px; color: var(--bond-text); margin: 0; }

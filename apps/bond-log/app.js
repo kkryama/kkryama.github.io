@@ -11,11 +11,15 @@ let db,
   currentProfile = null,
   currentStream = null,
   currentListener = null,
-  listenerSortMode = "name-asc";
+  listenerSortMode = "name-asc",
+  platformSortMode = "name-asc";
 const nameCollator = new Intl.Collator("ja", { sensitivity: "base" });
 const PLATFORM_CANDIDATES = [
   "YouTube",
   "Twitch",
+  "ツイキャス",
+  "ニコニコ生放送",
+  "Mirrativ",
   "IRIAM",
   "Palmu",
   "SHOWROOM",
@@ -24,8 +28,8 @@ const PLATFORM_CANDIDATES = [
   "17LIVE",
   "Mildom",
   "OPENREC",
-  "ツイキャス",
-  "ニコニコ生放送"
+  "Withny",
+  "RPLAY"
 ];
 
 // リスナーごとに保持する URL の最大数
@@ -593,13 +597,13 @@ const confirmStatusDiscard = () => {
 };
 
 const setStatusFormActive = isActive => {
-  if (!statusManagerRefs.form || !statusManagerRefs.editorEmptyMessage) return;
+  if (!statusManagerRefs.form || !statusManagerRefs.detailEmptyMessage) return;
   if (isActive) {
     statusManagerRefs.form.classList.add("active");
-    statusManagerRefs.editorEmptyMessage.style.display = "none";
+    statusManagerRefs.detailEmptyMessage.style.display = "none";
   } else {
     statusManagerRefs.form.classList.remove("active");
-    statusManagerRefs.editorEmptyMessage.style.display = "block";
+    statusManagerRefs.detailEmptyMessage.style.display = "block";
   }
 };
 
@@ -612,8 +616,13 @@ const getEditingStatus = () => {
 };
 
 const updateStatusArchiveToggleLabel = () => {
-  if (!statusManagerRefs.archiveToggle || !statusManagerRefs.isArchived) return;
-  statusManagerRefs.archiveToggle.textContent = statusManagerRefs.isArchived.checked ? "アクティブに戻す" : "アーカイブへ移動";
+  if (!statusManagerRefs.archiveToggle) return;
+  
+  // 現在編集中のステータスを取得
+  const currentStatus = statusCatalog.find(s => s.id === statusManagerState.selectedId);
+  const isArchived = currentStatus ? Boolean(currentStatus.isArchived) : false;
+  
+  statusManagerRefs.archiveToggle.textContent = isArchived ? "アクティブに戻す" : "アーカイブへ移動";
 };
 
 const updateStatusUsageInfo = (status, { isDraft } = {}) => {
@@ -639,14 +648,12 @@ const populateStatusForm = (status, { isDraft } = {}) => {
   statusManagerRefs.displayName.value = status.displayName || "";
   statusManagerRefs.description.value = status.description || "";
   statusManagerRefs.displayPriority.value = Number.isFinite(status.displayPriority) ? status.displayPriority : 0;
-  statusManagerRefs.isArchived.checked = Boolean(status.isArchived);
   updateStatusArchiveToggleLabel();
   updateStatusUsageInfo(status, { isDraft: Boolean(isDraft) });
   statusFormSyncing = false;
   statusManagerState.formDirty = false;
   setStatusFormActive(true);
   if (statusManagerRefs.deleteBtn) statusManagerRefs.deleteBtn.disabled = statusManagerState.editingMode !== "existing";
-  if (statusManagerRefs.resetBtn) statusManagerRefs.resetBtn.disabled = false;
 };
 
 const syncDraftFromForm = () => {
@@ -658,9 +665,7 @@ const syncDraftFromForm = () => {
     const parsed = Number.parseInt(statusManagerRefs.displayPriority.value, 10);
     statusManagerState.draft.displayPriority = Number.isFinite(parsed) ? parsed : 0;
   }
-  if (statusManagerRefs.isArchived) {
-    statusManagerState.draft.isArchived = statusManagerRefs.isArchived.checked;
-  }
+  // isArchivedはアーカイブボタンから直接変更されるため、ここでは同期不要
 };
 
 const renderStatusList = () => {
@@ -699,9 +704,6 @@ const renderStatusList = () => {
     const li = document.createElement("li");
     li.className = "status-list-item";
     if (status.__draft) li.classList.add("status-list-item--draft");
-    if ((status.__draft && statusManagerState.editingMode === "draft") || (!status.__draft && status.id === statusManagerState.selectedId)) {
-      li.classList.add("selected");
-    }
   const title = document.createElement("span");
   title.className = "status-list-title";
   title.textContent = status.displayName || "(名称未設定)";
@@ -725,15 +727,7 @@ const renderStatusList = () => {
     li.appendChild(meta);
     if (!status.__draft) {
       li.onclick = () => {
-        if (status.id === statusManagerState.selectedId && statusManagerState.editingMode === "existing") return;
-        if (!confirmStatusDiscard()) return;
-        const target = statusCatalog.find(entry => entry.id === status.id);
-        if (!target) return;
-        statusManagerState.selectedId = target.id;
-        statusManagerState.editingMode = "existing";
-        statusManagerState.draft = null;
-        populateStatusForm(target, { isDraft: false });
-        renderStatusList();
+        showStatusDetail(status.id);
       };
     }
     statusManagerRefs.list.appendChild(li);
@@ -746,21 +740,34 @@ const resetStatusManager = () => {
   statusManagerState.formDirty = false;
   statusManagerState.editingMode = "none";
   statusManagerState.draft = null;
-  setStatusFormActive(false);
   if (statusManagerRefs.deleteBtn) statusManagerRefs.deleteBtn.disabled = true;
-  if (statusManagerRefs.resetBtn) statusManagerRefs.resetBtn.disabled = true;
-  if (statusManagerRefs.isArchived) statusManagerRefs.isArchived.checked = false;
   if (statusManagerRefs.usageInfo) statusManagerRefs.usageInfo.textContent = "";
   updateStatusArchiveToggleLabel();
 };
 
 const beginCreateStatus = () => {
-  if (!confirmStatusDiscard()) return;
-  statusManagerState.draft = createInitialStatusDraft();
-  statusManagerState.selectedId = statusManagerState.draft.id;
-  statusManagerState.editingMode = "draft";
-  populateStatusForm(statusManagerState.draft, { isDraft: true });
-  renderStatusList();
+  const fields = [
+    { name: "displayName", label: "表示名（必須）" },
+    { name: "description", label: "説明（任意）", type: "textarea" },
+    { name: "displayPriority", label: "優先度（任意）", type: "number", value: 0 }
+  ];
+  openModal("ステータスを追加", fields, values => {
+    const displayName = (values.displayName || "").trim();
+    if (!displayName) {
+      alert("表示名を入力してください");
+      return;
+    }
+    const newStatus = {
+      id: generateUniqueStatusId(),
+      displayName,
+      description: values.description || "",
+      displayPriority: Number(values.displayPriority) || 0,
+      isArchived: false
+    };
+    statusCatalog.push(newStatus);
+    saveAppData();
+    renderStatusList();
+  });
 };
 
 const collectStatusFormValues = () => {
@@ -788,12 +795,17 @@ const collectStatusFormValues = () => {
   }
   const priorityRaw = Number.parseInt(statusManagerRefs.displayPriority.value, 10);
   const priorityValue = Number.isFinite(priorityRaw) ? priorityRaw : 0;
+  
+  // 現在のステータスからisArchivedを取得（存在しない場合はfalse）
+  const currentStatus = statusCatalog.find(s => s.id === resolvedId);
+  const isArchived = currentStatus ? Boolean(currentStatus.isArchived) : false;
+  
   return {
     id: resolvedId,
     displayName: displayNameRaw,
     description: statusManagerRefs.description.value.trim(),
     displayPriority: priorityValue,
-    isArchived: Boolean(statusManagerRefs.isArchived.checked)
+    isArchived: isArchived
   };
 };
 
@@ -836,7 +848,7 @@ const applyStatusFormSave = () => {
   statusManagerState.formDirty = false;
   saveAppData();
   populateStatusForm(payload, { isDraft: false });
-  renderStatusList();
+  backToStatusList();
   refreshCurrentView();
   refreshListenerDetail();
   renderAttendees();
@@ -847,18 +859,17 @@ const discardStatusChanges = () => {
     statusManagerState.draft = createInitialStatusDraft();
     statusManagerState.selectedId = statusManagerState.draft.id;
     populateStatusForm(statusManagerState.draft, { isDraft: true });
-    renderStatusList();
+    // Stay in detail view
     return;
   }
   if (statusManagerState.editingMode === "existing") {
     const status = statusCatalog.find(entry => entry.id === statusManagerState.selectedId);
     if (!status) {
-      resetStatusManager();
-      renderStatusList();
+      backToStatusList();
       return;
     }
     populateStatusForm(status, { isDraft: false });
-    renderStatusList();
+    // Stay in detail view
   }
 };
 
@@ -892,21 +903,41 @@ const removeStatusDefinition = () => {
   statusManagerState.editingMode = "none";
   statusManagerState.formDirty = false;
   setStatusFormActive(false);
-  renderStatusList();
+  backToStatusList();
   saveAppData();
   refreshCurrentView();
   refreshListenerDetail();
   renderAttendees();
 };
 
-const openStatusManagement = () => {
+const showStatusList = () => {
   resetStatusManager();
   if (statusManagerRefs.filterState) statusManagerRefs.filterState.value = statusManagerState.stateFilter;
   renderStatusList();
-  showView("status-management-view");
+  showView("status-list-view");
   window.scrollTo({ top: 0, behavior: "smooth" });
   updateTabState('status');
 };
+
+const showStatusDetail = (statusId) => {
+  const status = statusCatalog.find(s => s.id === statusId);
+  if (!status) return;
+  statusManagerState.selectedId = statusId;
+  statusManagerState.editingMode = "existing";
+  statusManagerState.draft = null;
+  populateStatusForm(status, { isDraft: false });
+  showView("status-detail-view");
+  window.scrollTo({ top: 0, behavior: "smooth" });
+};
+
+const backToStatusList = () => {
+  resetStatusManager();
+  renderStatusList();
+  showView("status-list-view");
+  window.scrollTo({ top: 0, behavior: "smooth" });
+};
+
+const openStatusManagement = () => showStatusList();
 
 const closeStatusManagement = () => {
   resetStatusManager();
@@ -1094,7 +1125,26 @@ const renderPlatformList = () => {
     emptyState.style.display = "none";
   }
   
-  profiles.forEach(profile => {
+  const sortSelect = document.getElementById("platform-sort");
+  if (sortSelect) sortSelect.value = platformSortMode;
+  
+  const compareNameAsc = (a, b) => {
+    const result = nameCollator.compare((a.platform || "").trim(), (b.platform || "").trim());
+    if (result !== 0) return result;
+    return nameCollator.compare((a.accountName || "").trim(), (b.accountName || "").trim());
+  };
+  
+  const sorted = [...profiles];
+  sorted.sort((a, b) => {
+    switch (platformSortMode) {
+      case "name-desc":
+        return compareNameAsc(b, a);
+      default:
+        return compareNameAsc(a, b);
+    }
+  });
+  
+  sorted.forEach(profile => {
     const li = document.createElement("li");
     const header = document.createElement("div");
     header.className = "list-item-header";
@@ -2056,7 +2106,7 @@ function openModal(title, fields, onSubmit) {
       element.type = "text";
       element.placeholder = f.placeholder || labelText;
       if (Array.isArray(f.options)) {
-        const listId = `${f.name}-list`;
+        const listId = `${f.name}-datalist`;
         element.setAttribute("list", listId);
         const dataList = document.createElement("datalist");
         dataList.id = listId;
@@ -2251,6 +2301,14 @@ if (listenerSortSelect) {
   listenerSortSelect.onchange = e => {
     listenerSortMode = e.target.value || "name-asc";
     renderListenerList();
+  };
+}
+
+const platformSortSelect = document.getElementById("platform-sort");
+if (platformSortSelect) {
+  platformSortSelect.onchange = e => {
+    platformSortMode = e.target.value || "name-asc";
+    renderPlatformList();
   };
 }
 
@@ -2875,33 +2933,47 @@ if (listenerStatusHistoryBtn) {
 }
 
 // === メニュー ===
-statusManagerRefs.view = document.getElementById("status-management-view");
-if (statusManagerRefs.view) {
+statusManagerRefs.listView = document.getElementById("status-list-view");
+statusManagerRefs.detailView = document.getElementById("status-detail-view");
+if (statusManagerRefs.listView) {
   statusManagerRefs.list = document.getElementById("status-list");
   statusManagerRefs.emptyMessage = document.getElementById("status-empty");
-  statusManagerRefs.editorEmptyMessage = document.getElementById("status-editor-empty");
+  statusManagerRefs.addBtn = document.getElementById("status-add-btn");
+  statusManagerRefs.filterState = document.getElementById("status-filter-state");
+  statusManagerRefs.backToDashboardBtn = document.getElementById("back-to-dashboard-from-status");
+
+  if (statusManagerRefs.addBtn) statusManagerRefs.addBtn.onclick = () => beginCreateStatus();
+  if (statusManagerRefs.filterState) statusManagerRefs.filterState.onchange = event => {
+    statusManagerState.stateFilter = event.target.value || "active";
+    renderStatusList();
+  };
+  if (statusManagerRefs.backToDashboardBtn) statusManagerRefs.backToDashboardBtn.onclick = () => {
+    if (!confirmStatusDiscard()) return;
+    closeStatusManagement();
+    navigateHome();
+  };
+}
+if (statusManagerRefs.detailView) {
+  statusManagerRefs.detailEmptyMessage = document.getElementById("status-detail-empty");
   statusManagerRefs.form = document.getElementById("status-editor-form");
   statusManagerRefs.id = document.getElementById("status-id");
   statusManagerRefs.displayName = document.getElementById("status-displayName");
   statusManagerRefs.description = document.getElementById("status-description");
   statusManagerRefs.displayPriority = document.getElementById("status-displayPriority");
-  statusManagerRefs.isArchived = document.getElementById("status-isArchived");
   statusManagerRefs.archiveToggle = document.getElementById("status-archive-toggle-btn");
-  statusManagerRefs.resetBtn = document.getElementById("status-reset-btn");
   statusManagerRefs.deleteBtn = document.getElementById("status-delete-btn");
   statusManagerRefs.saveBtn = document.getElementById("status-save-btn");
-  statusManagerRefs.addBtn = document.getElementById("status-add-btn");
   statusManagerRefs.usageInfo = document.getElementById("status-usage-info");
-  statusManagerRefs.filterState = document.getElementById("status-filter-state");
-  statusManagerRefs.backBtn = document.getElementById("back-to-status-home");
+  statusManagerRefs.backToListBtn = document.getElementById("back-to-status-list");
+}
 
+if (statusManagerRefs.detailView) {
   const handleFormChange = () => {
     if (statusFormSyncing) return;
     statusManagerState.formDirty = true;
-    if (statusManagerRefs.resetBtn) statusManagerRefs.resetBtn.disabled = false;
     syncDraftFromForm();
     updateStatusArchiveToggleLabel();
-    renderStatusList();
+    // Note: No renderStatusList here since we're in detail view
   };
 
   if (statusManagerRefs.form) {
@@ -2915,26 +2987,52 @@ if (statusManagerRefs.view) {
 
   if (statusManagerRefs.archiveToggle) {
     statusManagerRefs.archiveToggle.onclick = () => {
-      if (!statusManagerRefs.isArchived) return;
-      statusManagerRefs.isArchived.checked = !statusManagerRefs.isArchived.checked;
-      statusManagerState.formDirty = true;
-      syncDraftFromForm();
-      updateStatusArchiveToggleLabel();
-      renderStatusList();
+      // 現在編集中のステータスを取得
+      const currentStatus = statusCatalog.find(s => s.id === statusManagerState.selectedId);
+      if (!currentStatus && statusManagerState.editingMode !== "draft") {
+        return;
+      }
+      
+      // 現在のアーカイブ状態を確認
+      const isCurrentlyArchived = currentStatus ? Boolean(currentStatus.isArchived) : false;
+      const willBeArchived = !isCurrentlyArchived;
+      
+      const confirmMessage = willBeArchived
+        ? "このステータスをアーカイブしますか?\n\n編集中の内容も保存されます。"
+        : "このステータスをアクティブに戻しますか?\n\n編集中の内容も保存されます。";
+      
+      // 確認ダイアログを表示
+      if (!confirm(confirmMessage)) {
+        return;
+      }
+      
+      // ステータスのアーカイブ状態を直接変更
+      if (currentStatus) {
+        currentStatus.isArchived = willBeArchived;
+      }
+      
+      // データを保存
+      saveAppData();
+      
+      // 一覧画面へ戻る
+      backToStatusList();
+      // アーカイブ操作後は、変更したステータスが表示されるフィルターに切り替える
+      // (backToStatusList内でresetStatusManagerが呼ばれるため、その後に設定)
+      statusManagerState.stateFilter = willBeArchived ? "archived" : "active";
+      if (statusManagerRefs.filterState) {
+        statusManagerRefs.filterState.value = statusManagerState.stateFilter;
+      }
+      renderStatusList(); // フィルター変更を反映
+      refreshCurrentView();
+      refreshListenerDetail();
+      renderAttendees();
     };
   }
 
-  if (statusManagerRefs.resetBtn) statusManagerRefs.resetBtn.onclick = () => discardStatusChanges();
   if (statusManagerRefs.deleteBtn) statusManagerRefs.deleteBtn.onclick = () => removeStatusDefinition();
-  if (statusManagerRefs.addBtn) statusManagerRefs.addBtn.onclick = () => beginCreateStatus();
-  if (statusManagerRefs.filterState) statusManagerRefs.filterState.onchange = event => {
-    statusManagerState.stateFilter = event.target.value || "active";
-    renderStatusList();
-  };
-  if (statusManagerRefs.backBtn) statusManagerRefs.backBtn.onclick = () => {
+  if (statusManagerRefs.backToListBtn) statusManagerRefs.backToListBtn.onclick = () => {
     if (!confirmStatusDiscard()) return;
-    closeStatusManagement();
-    navigateHome();
+    backToStatusList();
   };
 
   resetStatusManager();
@@ -2944,7 +3042,8 @@ if (statusManagerRefs.view) {
 const requestOpenStatusManagement = () => {
   const menuElement = document.getElementById("menu");
   if (menuElement) menuElement.style.display = "none";
-  if (statusManagerRefs.view && statusManagerRefs.view.classList.contains("active") && hasUnsavedStatusChanges()) {
+  const currentView = document.querySelector('.view.active');
+  if (currentView && (currentView.id === 'status-list-view' || currentView.id === 'status-detail-view') && hasUnsavedStatusChanges()) {
     if (!confirmStatusDiscard()) return false;
   }
   openStatusManagement();
