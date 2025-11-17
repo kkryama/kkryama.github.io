@@ -47,6 +47,49 @@ const sanitizeTimeInput = raw => {
   return match ? match[1] : "";
 };
 
+const formatDateInputValue = date => {
+  if (!(date instanceof Date) || Number.isNaN(date.getTime())) return "";
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+};
+
+const formatTimeInputValue = date => {
+  if (!(date instanceof Date) || Number.isNaN(date.getTime())) return "";
+  const hours = String(date.getHours()).padStart(2, "0");
+  const minutes = String(date.getMinutes()).padStart(2, "0");
+  return `${hours}:${minutes}`;
+};
+
+const buildIsoDateTime = (dateValue, timeValue) => {
+  const sanitizedDate = sanitizeDateInput(dateValue);
+  const sanitizedTime = sanitizeTimeInput(timeValue);
+  if (!sanitizedDate) return new Date().toISOString();
+  const [year, month, day] = sanitizedDate.split("-").map(part => Number.parseInt(part, 10));
+  const [hours, minutes] = sanitizedTime
+    ? sanitizedTime.split(":").map(part => Number.parseInt(part, 10))
+    : [0, 0];
+  const localDate = new Date(year, (month || 1) - 1, day || 1, Number.isFinite(hours) ? hours : 0, Number.isFinite(minutes) ? minutes : 0, 0, 0);
+  return Number.isNaN(localDate.getTime()) ? new Date().toISOString() : localDate.toISOString();
+};
+
+const formatDateTimeLocalValue = isoValue => {
+  const parsed = parseIsoDateTime(isoValue);
+  if (!parsed) return "";
+  const datePart = formatDateInputValue(parsed);
+  const timePart = formatTimeInputValue(parsed);
+  return datePart && timePart ? `${datePart}T${timePart}` : "";
+};
+
+const buildIsoFromDateTimeLocal = localValue => {
+  if (typeof localValue !== "string") return null;
+  const trimmed = localValue.trim();
+  if (!trimmed) return null;
+  const [datePart, timePart] = trimmed.split("T");
+  return buildIsoDateTime(datePart, timePart || "00:00");
+};
+
 const sanitizeUrlInput = raw => {
   if (!raw) return "";
   return String(raw).trim().slice(0, 2048);
@@ -1063,7 +1106,7 @@ const renderPlatformList = () => {
 
     const actions = document.createElement("div");
     actions.className = "list-item-actions";
-    actions.appendChild(createActionButton("編集", "", () => openProfileEditor(profile)));
+    actions.appendChild(createActionButton("編集", "edit", () => openProfileEditor(profile)));
     actions.appendChild(createActionButton("削除", "danger", () => confirmDeleteProfile(profile)));
     header.appendChild(actions);
 
@@ -1154,7 +1197,7 @@ const renderStreams = () => {
 
     const actions = document.createElement("div");
     actions.className = "list-item-actions";
-    actions.appendChild(createActionButton("編集", "", () => openStreamEditor(stream)));
+    actions.appendChild(createActionButton("編集", "edit", () => openStreamEditor(stream)));
     actions.appendChild(createActionButton("削除", "danger", () => confirmDeleteStream(stream)));
     header.appendChild(actions);
 
@@ -1452,6 +1495,7 @@ const openListenerStatusManager = () => {
     return nameCollator.compare(a.label, b.label);
   });
   const options = statusItems.map(item => ({ value: item.id, label: item.label }));
+  const now = new Date();
   openModal("ステータス管理", [
     {
       name: "target",
@@ -1465,17 +1509,29 @@ const openListenerStatusManager = () => {
       type: "checkboxes",
       options,
       value: Array.from(activeIds)
+    },
+    {
+      name: "statusActivatedDate",
+      label: "付与日",
+      type: "date",
+      value: formatDateInputValue(now)
+    },
+    {
+      name: "statusActivatedTime",
+      label: "付与時刻",
+      type: "time",
+      value: formatTimeInputValue(now)
     }
   ], values => {
     const selectedSet = new Set(Array.isArray(values.statusIds) ? values.statusIds : []);
+    const resolvedActivatedAt = buildIsoDateTime(values.statusActivatedDate, values.statusActivatedTime);
     let changed = false;
 
     const addAssignment = statusId => {
-      const isoNow = new Date().toISOString();
       currentListener.statusAssignments.push({
         statusId,
         source: "manual",
-        activatedAt: isoNow,
+        activatedAt: resolvedActivatedAt,
         deactivatedAt: null,
         reason: "",
         note: ""
@@ -1510,45 +1566,217 @@ const openListenerStatusHistory = () => {
     alert("リスナーを選択してから操作してください。");
     return;
   }
-  const assignments = Array.isArray(currentListener.statusAssignments)
-    ? currentListener.statusAssignments.filter(entry => entry && entry.statusId)
-    : [];
-  const historyEntries = assignments.map(assignment => ({
-    assignment,
-    definition: getStatusDefinitionById(assignment.statusId)
-  }));
-  historyEntries.sort((a, b) => {
-    const aStart = parseIsoDateTime(a.assignment.activatedAt);
-    const bStart = parseIsoDateTime(b.assignment.activatedAt);
-    const aTime = aStart ? aStart.getTime() : 0;
-    const bTime = bStart ? bStart.getTime() : 0;
-    if (aTime !== bTime) return bTime - aTime;
-    const aLabel = a.definition ? (a.definition.displayName || a.definition.id || "") : (a.assignment.statusId || "");
-    const bLabel = b.definition ? (b.definition.displayName || b.definition.id || "") : (b.assignment.statusId || "");
-    return nameCollator.compare(aLabel, bLabel);
-  });
 
-  modalTitle.textContent = "ステータス履歴";
-  modalBody.innerHTML = "";
+  let showActiveOnly = false;
+  const collectEntries = () => {
+    const assignments = Array.isArray(currentListener.statusAssignments)
+      ? currentListener.statusAssignments.filter(entry => entry && entry.statusId)
+      : [];
+    const decorated = assignments.map(assignment => ({
+      assignment,
+      definition: getStatusDefinitionById(assignment.statusId)
+    }));
+    decorated.sort((a, b) => {
+      const aStart = parseIsoDateTime(a.assignment.activatedAt);
+      const bStart = parseIsoDateTime(b.assignment.activatedAt);
+      const aTime = aStart ? aStart.getTime() : 0;
+      const bTime = bStart ? bStart.getTime() : 0;
+      if (aTime !== bTime) return bTime - aTime;
+      const aLabel = a.definition ? (a.definition.displayName || a.definition.id || "") : (a.assignment.statusId || "");
+      const bLabel = b.definition ? (b.definition.displayName || b.definition.id || "") : (b.assignment.statusId || "");
+      return nameCollator.compare(aLabel, bLabel);
+    });
+    return decorated;
+  };
 
-  const target = document.createElement("p");
-  target.className = "status-history-target";
-  target.textContent = `対象リスナー: ${currentListener.name || "(名称未設定)"}`;
-  modalBody.appendChild(target);
+  let editingAssignment = null;
+  let filterButton = null;
 
-  if (historyEntries.length === 0) {
-    const empty = document.createElement("p");
-    empty.className = "status-history-empty";
-    empty.textContent = "ステータス履歴はまだ記録されていません";
-    modalBody.appendChild(empty);
-  } else {
+  const resetEditingState = () => {
+    editingAssignment = null;
+  };
+
+  const updateFilterButtonState = () => {
+    if (!filterButton) return;
+    filterButton.checked = showActiveOnly;
+  };
+
+  const handleFilterToggle = () => {
+    if (editingAssignment) {
+      const confirmed = confirm("編集中の履歴はキャンセルされます。フィルターを切り替えますか？");
+      if (!confirmed) return;
+      resetEditingState();
+    }
+    showActiveOnly = !showActiveOnly;
+    updateFilterButtonState();
+    renderHistoryContent();
+  };
+
+  const setupFilterUi = () => {
+    if (!modalHeaderActions) return;
+    modalHeaderActions.innerHTML = "";
+    const wrapper = document.createElement("div");
+    wrapper.className = "status-history-filter";
+    const label = document.createElement("label");
+    label.className = "status-history-filter-label";
+    filterButton = document.createElement("input");
+    filterButton.type = "checkbox";
+    filterButton.className = "status-history-filter-checkbox";
+    filterButton.checked = false;
+    filterButton.onchange = handleFilterToggle;
+    label.appendChild(filterButton);
+    const labelText = document.createElement("span");
+    labelText.className = "status-history-filter-text";
+    labelText.textContent = "現在有効のみ表示";
+    label.appendChild(labelText);
+    wrapper.appendChild(label);
+    modalHeaderActions.appendChild(wrapper);
+    updateFilterButtonState();
+  };
+
+  const handleDelete = assignment => {
+    if (!confirm("この履歴を削除しますか？")) return;
+    currentListener.statusAssignments = currentListener.statusAssignments.filter(entry => entry !== assignment);
+    saveAppData();
+    refreshCurrentView();
+    refreshListenerDetail();
+    renderAttendees();
+    resetEditingState();
+    renderHistoryContent();
+  };
+
+  const handleSave = (assignment, activatedInput, deactivatedInput) => {
+    assignment.activatedAt = buildIsoFromDateTimeLocal(activatedInput.value);
+    if (deactivatedInput) {
+      assignment.deactivatedAt = buildIsoFromDateTimeLocal(deactivatedInput.value);
+    }
+    saveAppData();
+    refreshCurrentView();
+    refreshListenerDetail();
+    renderAttendees();
+    resetEditingState();
+    renderHistoryContent();
+  };
+
+  const createActions = assignment => {
+    if (assignment.source === "system") return null;
+    const actions = document.createElement("div");
+    actions.className = "status-history-actions";
+
+    const editBtn = document.createElement("button");
+    editBtn.type = "button";
+    editBtn.className = "list-action-btn edit";
+    editBtn.textContent = editingAssignment === assignment ? "編集中" : "編集";
+    editBtn.disabled = Boolean(editingAssignment && editingAssignment !== assignment);
+    editBtn.onclick = () => {
+      if (editingAssignment === assignment) return;
+      editingAssignment = assignment;
+      renderHistoryContent();
+    };
+    actions.appendChild(editBtn);
+
+    const deleteBtn = document.createElement("button");
+    deleteBtn.type = "button";
+    deleteBtn.className = "list-action-btn danger";
+    deleteBtn.textContent = "削除";
+    deleteBtn.disabled = Boolean(editingAssignment && editingAssignment !== assignment);
+    deleteBtn.onclick = () => {
+      if (editingAssignment && editingAssignment !== assignment) return;
+      handleDelete(assignment);
+    };
+    actions.appendChild(deleteBtn);
+
+    return actions;
+  };
+
+  const createEditor = assignment => {
+    if (assignment.source === "system") return null;
+    if (editingAssignment !== assignment) return null;
+    const editor = document.createElement("div");
+    editor.className = "status-history-edit";
+
+    const activatedField = document.createElement("label");
+    activatedField.className = "status-history-edit-field";
+    activatedField.textContent = "付与日時";
+    const activatedInput = document.createElement("input");
+    activatedInput.type = "datetime-local";
+    activatedInput.value = formatDateTimeLocalValue(assignment.activatedAt);
+    activatedField.appendChild(activatedInput);
+    editor.appendChild(activatedField);
+
+    let deactivatedInput = null;
+    if (assignment.deactivatedAt) {
+      const deactivatedField = document.createElement("label");
+      deactivatedField.className = "status-history-edit-field";
+      deactivatedField.textContent = "解除日時";
+      deactivatedInput = document.createElement("input");
+      deactivatedInput.type = "datetime-local";
+      deactivatedInput.value = formatDateTimeLocalValue(assignment.deactivatedAt);
+      deactivatedField.appendChild(deactivatedInput);
+      editor.appendChild(deactivatedField);
+    }
+
+    const buttonRow = document.createElement("div");
+    buttonRow.className = "status-history-edit-buttons";
+
+    const saveBtn = document.createElement("button");
+    saveBtn.type = "button";
+    saveBtn.className = "status-history-edit-btn";
+    saveBtn.textContent = "保存";
+    saveBtn.onclick = () => handleSave(assignment, activatedInput, deactivatedInput);
+    buttonRow.appendChild(saveBtn);
+
+    const cancelBtn = document.createElement("button");
+    cancelBtn.type = "button";
+    cancelBtn.className = "status-history-edit-btn status-history-edit-btn--secondary";
+    cancelBtn.textContent = "キャンセル";
+    cancelBtn.onclick = () => {
+      resetEditingState();
+      renderHistoryContent();
+    };
+    buttonRow.appendChild(cancelBtn);
+
+    editor.appendChild(buttonRow);
+    return editor;
+  };
+
+  const renderHistoryContent = () => {
+    modalBody.innerHTML = "";
+
+    const target = document.createElement("p");
+    target.className = "status-history-target";
+    target.textContent = `対象リスナー: ${currentListener.name || "(名称未設定)"}`;
+    modalBody.appendChild(target);
+
+    const historyEntries = collectEntries();
+    const filteredEntries = showActiveOnly
+      ? historyEntries.filter(entry => !entry.assignment.deactivatedAt)
+      : historyEntries;
+    if (filteredEntries.length === 0) {
+      const empty = document.createElement("p");
+      empty.className = "status-history-empty";
+      empty.textContent = showActiveOnly
+        ? "現在有効な履歴はありません"
+        : "ステータス履歴はまだ記録されていません";
+      modalBody.appendChild(empty);
+      return;
+    }
+
     const container = document.createElement("div");
     container.className = "status-history-container";
     const list = document.createElement("ul");
     list.className = "status-history-list";
-    historyEntries.forEach(entry => {
+
+    filteredEntries.forEach(entry => {
       const item = document.createElement("li");
       item.className = "status-history-item";
+      if (editingAssignment && editingAssignment !== entry.assignment) {
+        item.classList.add("status-history-item--disabled");
+      }
+      if (editingAssignment === entry.assignment) {
+        item.classList.add("status-history-item--editing");
+      }
+
       const { assignment, definition } = entry;
       const labelText = definition && (definition.displayName || definition.id)
         ? definition.displayName || definition.id
@@ -1597,11 +1825,22 @@ const openListenerStatusHistory = () => {
         item.appendChild(ended);
       }
 
+      const actions = createActions(assignment);
+      if (actions) item.appendChild(actions);
+
+      const editor = createEditor(assignment);
+      if (editor) item.appendChild(editor);
+
       list.appendChild(item);
     });
+
     container.appendChild(list);
     modalBody.appendChild(container);
-  }
+  };
+
+  modalTitle.textContent = "ステータス履歴";
+  setupFilterUi();
+  renderHistoryContent();
 
   const okBtn = document.getElementById("modal-ok");
   if (okBtn) {
@@ -1777,10 +2016,12 @@ const parseStreamDate = (dateStr, timeStr) => {
 const modalBg = document.getElementById("modal-bg");
 const modalBody = document.getElementById("modal-body");
 const modalTitle = document.getElementById("modal-title");
+const modalHeaderActions = document.getElementById("modal-header-actions");
 
 function openModal(title, fields, onSubmit) {
   modalTitle.textContent = title;
   modalBody.innerHTML = "";
+  if (modalHeaderActions) modalHeaderActions.innerHTML = "";
   fields.forEach(f => {
     const wrapper = document.createElement("div");
     wrapper.className = "modal-field";
@@ -1922,6 +2163,7 @@ function openModal(title, fields, onSubmit) {
 
 const closeModal = () => {
   modalBg.style.display = "none";
+  if (modalHeaderActions) modalHeaderActions.innerHTML = "";
   const okBtn = document.getElementById("modal-ok");
   if (okBtn) {
     okBtn.textContent = "OK";
@@ -2106,7 +2348,7 @@ const renderAttendees = () => {
 
     const actions = document.createElement("div");
     actions.className = "list-item-actions";
-    actions.appendChild(createActionButton("編集", "", () => openAttendeeEditModal(index)));
+    actions.appendChild(createActionButton("編集", "edit", () => openAttendeeEditModal(index)));
     actions.appendChild(createActionButton("削除", "danger", () => {
       const targetName = listener ? listener.name : "この参加者";
       if (!confirm(`${targetName} を参加者一覧から削除しますか？`)) return;
@@ -2225,7 +2467,7 @@ const renderGifts = () => {
 
     const actions = document.createElement("div");
     actions.className = "list-item-actions";
-    actions.appendChild(createActionButton("編集", "", () => openGiftEditModal(index)));
+    actions.appendChild(createActionButton("編集", "edit", () => openGiftEditModal(index)));
     actions.appendChild(createActionButton("削除", "danger", () => {
       const targetLabel = listener ? `${listenerName} のギフト` : "このギフト";
       if (!confirm(`${targetLabel} を削除しますか？`)) return;

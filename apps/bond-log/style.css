@@ -297,10 +297,17 @@ textarea:focus {
   max-height: 90vh;
   overflow-y: auto;
 }
+.modal-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 12px; }
 #modal h3 { 
   margin-top: 0;
   color: var(--bond-text);
 }
+.modal-header-actions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
+#modal .modal-header-actions:empty { display: none; }
+.status-history-filter { display: flex; align-items: center; }
+.status-history-filter-label { display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 14px; user-select: none; }
+.status-history-filter-checkbox { width: 18px; height: 18px; cursor: pointer; accent-color: var(--bond-teal); }
+.status-history-filter-text { color: var(--bond-text); }
 #modal button { 
   margin-right: 8px; 
   padding: 8px 12px; 
@@ -343,6 +350,23 @@ textarea:focus {
 .list-action-btn:active {
   transform: translateY(0);
 }
+.list-action-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.list-action-btn.edit {
+  border: 1px solid var(--bond-teal) !important;
+  color: var(--bond-teal) !important;
+  background: white !important;
+}
+.list-action-btn.edit:hover {
+  background: var(--bond-primary-light) !important;
+  border-color: var(--bond-teal) !important;
+}
+.list-action-btn.edit:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
 .list-action-btn.danger { 
   background: var(--bond-primary-light); 
   color: var(--bond-danger); 
@@ -352,7 +376,6 @@ textarea:focus {
 }
 .stream-meta { margin: 4px 0; font-size: 14px; color: var(--bond-muted); word-break: break-all; }
 #stream-url { display: none; }
-
 button.primary { 
   background: var(--bond-teal); 
   color: #fff; 
@@ -471,6 +494,14 @@ button.danger-btn:active {
 .status-history-source,
 .status-history-description { font-size: 12px; color: var(--bond-muted); margin-top: 4px; white-space: pre-wrap; }
 .status-history-empty { font-size: 13px; color: var(--bond-text-lighter); }
+.status-history-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.status-history-item--disabled { opacity: 0.6; pointer-events: none; }
+.status-history-edit { margin-top: 12px; display: flex; flex-direction: column; gap: 10px; padding-top: 10px; border-top: 1px dashed var(--bond-border); }
+.status-history-edit-field { display: flex; flex-direction: column; font-size: 12px; color: var(--bond-muted); gap: 4px; }
+.status-history-edit-field input { padding: 6px 8px; border-radius: 4px; border: 1px solid var(--bond-border-light); font-size: 13px; }
+.status-history-edit-buttons { display: flex; flex-wrap: wrap; gap: 8px; }
+.status-history-edit-btn { padding: 6px 14px; border-radius: 4px; border: none; background: var(--bond-teal); color: white; font-size: 13px; cursor: pointer; }
+.status-history-edit-btn--secondary { background: var(--bond-border-light); color: var(--bond-text); }
 
 /* モバイル向けレスポンシブ対応 */
 @media (max-width: 768px) {
@@ -499,6 +530,9 @@ button.danger-btn:active {
     width: 95%;
     padding: 12px;
   }
+  .modal-header { flex-direction: column; align-items: stretch; }
+  .modal-header-actions { justify-content: flex-start; }
+
   
   .list li {
     padding: 10px;
