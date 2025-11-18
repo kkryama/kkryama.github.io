@@ -465,6 +465,24 @@ button.danger-btn:active {
 .platform-list-header-top { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
 .listener-list-header { display: flex; flex-direction: column; gap: 12px; margin-bottom: 16px; }
 .listener-list-header-top { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.stream-list-header { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 16px; }
+.stream-list-header input {
+  border: 1px solid var(--bond-teal);
+  background: var(--bond-bg-white);
+  color: var(--bond-text);
+  border-radius: 4px;
+  padding: 6px 12px;
+  font-size: 14px;
+  cursor: text;
+  transition: all 0.2s ease;
+  min-height: 44px;
+  flex: 1;
+}
+.stream-list-header input:focus {
+  outline: none;
+  border-color: var(--bond-teal-dark);
+  box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.25);
+}
 .profile-header { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 16px; }
 .section-header { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 8px; }
 .status-list { max-height: 380px; overflow-y: auto; }
@@ -598,4 +616,83 @@ a {
 #modal::-webkit-scrollbar-thumb {
   background: var(--bond-muted);
   border-radius: 4px;
+}
+
+/* ローカルタブナビゲーション */
+.local-nav {
+  display: flex;
+  border-bottom: 1px solid var(--bond-muted);
+  margin-bottom: 1rem;
+}
+
+.local-tab-btn {
+  background: transparent;
+  border: none;
+  padding: 0.75rem 1rem;
+  cursor: pointer;
+  font-size: 1rem;
+  color: var(--bond-text);
+  border-bottom: 2px solid transparent;
+  transition: color 0.2s, border-color 0.2s;
+}
+
+.local-tab-btn:hover {
+  color: var(--bond-teal);
+}
+
+.local-tab-btn.active {
+  color: var(--bond-teal);
+  border-bottom-color: var(--bond-teal);
+}
+
+.local-tab-content {
+  display: none;
+}
+
+.local-tab-content.active {
+  display: block;
+  animation: fadeIn 0.3s ease-in-out;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* 登録者履歴サマリー */
+.history-summary {
+  background: white;
+  border: 1px solid var(--bond-muted);
+  border-radius: 8px;
+  padding: 1rem;
+  margin-bottom: 1rem;
+  display: flex;
+  gap: 2rem;
+  align-items: center;
+}
+
+.summary-current,
+.summary-diff {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.summary-label {
+  font-size: 0.875rem;
+  color: var(--bond-text-muted);
+}
+
+.summary-value {
+  font-size: 1.5rem;
+  font-weight: bold;
+  color: var(--bond-text);
+}
+
+.summary-diff .summary-value.positive {
+  color: var(--bond-teal);
+}
+
+.summary-diff .summary-value.negative {
+  color: var(--bond-red);
 }

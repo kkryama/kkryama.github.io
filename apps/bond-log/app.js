@@ -12,7 +12,8 @@ let db,
   currentStream = null,
   currentListener = null,
   listenerSortMode = "name-asc",
-  platformSortMode = "name-asc";
+  platformSortMode = "name-asc",
+  streamSearchQuery = "";
 const nameCollator = new Intl.Collator("ja", { sensitivity: "base" });
 const PLATFORM_CANDIDATES = [
   "YouTube",
@@ -252,47 +253,50 @@ const normalizeListenerUrls = raw => {
   return unique.slice(0, MAX_LISTENER_URLS);
 };
 
+const sanitizeFollowerHistoryEntry = entry => {
+  if (!entry || typeof entry !== "object") return null;
+  const id = entry.id || generateId("fh");
+  const date = sanitizeDateInput(entry.date) || formatDateInputValue(new Date());
+  const count = typeof entry.count === "number" && entry.count >= 0 ? entry.count : 0;
+  const note = typeof entry.note === "string" ? entry.note.trim().slice(0, 500) : "";
+  return { id, date, count, note };
+};
+
+const sanitizeGift = gift => {
+  if (!gift || typeof gift !== "object") return null;
+  const listenerId = typeof gift.listenerId === "string" ? gift.listenerId.trim() : "";
+  const item = typeof gift.item === "string" ? gift.item.trim().slice(0, 200) : "";
+  const amount = typeof gift.amount === "string" ? gift.amount.trim().slice(0, 100) : "";
+  if (!listenerId || !item) return null;
+  return { listenerId, item, amount };
+};
+
 const sanitizeStream = stream => {
-  if (!stream || typeof stream !== "object") {
-    return { id: generateId("s"), title: "", date: "", startTime: "", url: "", attendees: [], gifts: [] };
-  }
+  if (!stream || typeof stream !== "object") return { id: generateId("s"), title: "", date: formatDateInputValue(new Date()), attendees: [], gifts: [] };
   const id = stream.id || generateId("s");
-  const inferredDate = sanitizeDateInput(stream.date || stream.startDate || (stream.scheduledAt ? stream.scheduledAt.split("T")[0] : ""));
-  const inferredTime = sanitizeTimeInput(stream.startTime || (stream.scheduledAt ? stream.scheduledAt.split("T")[1] : ""));
-  const attendees = Array.isArray(stream.attendees) ? [...stream.attendees] : [];
-  const gifts = Array.isArray(stream.gifts)
-    ? stream.gifts.map(gift => {
-        if (!gift || typeof gift !== "object") return { listenerId: "", item: "", amount: "" };
-        return {
-          listenerId: gift.listenerId || "",
-          item: gift.item || "",
-          amount: gift.amount || ""
-        };
-      })
-    : [];
-  return {
-    id,
-    title: (stream.title || "").trim(),
-    date: inferredDate,
-    startTime: inferredTime,
-    url: sanitizeUrlInput(stream.url),
-    attendees,
-    gifts
-  };
+  const title = (stream.title || "").trim().slice(0, 200);
+  const date = sanitizeDateInput(stream.date || stream.startDate || (stream.scheduledAt ? stream.scheduledAt.split("T")[0] : ""));
+  const startTime = sanitizeTimeInput(stream.startTime || (stream.scheduledAt ? stream.scheduledAt.split("T")[1] : ""));
+  const url = sanitizeUrlInput(stream.url);
+  const attendees = Array.isArray(stream.attendees) ? stream.attendees.filter(id => typeof id === "string" && id.trim()) : [];
+  const gifts = Array.isArray(stream.gifts) ? stream.gifts.map(sanitizeGift).filter(Boolean) : [];
+  return { id, title, date, startTime, url, attendees, gifts };
 };
 
 const sanitizeProfile = profile => {
-  if (!profile || typeof profile !== "object") return { id: generateId("p"), platform: "", accountName: "", streams: [] };
+  if (!profile || typeof profile !== "object") return { id: generateId("p"), platform: "", accountName: "", streams: [], followerHistory: [] };
   const id = profile.id || generateId("p");
   const normalizedUrl = (profile.url || "").trim().slice(0, 2048);
   const normalizedNote = (profile.note || "").trim().slice(0, 1000);
+  const followerHistory = Array.isArray(profile.followerHistory) ? profile.followerHistory.map(sanitizeFollowerHistoryEntry).filter(Boolean) : [];
   return {
     id,
     platform: (profile.platform || "").trim(),
     accountName: (profile.accountName || "").trim(),
     url: normalizedUrl,
     note: normalizedNote,
-    streams: Array.isArray(profile.streams) ? profile.streams.map(sanitizeStream) : []
+    streams: Array.isArray(profile.streams) ? profile.streams.map(sanitizeStream) : [],
+    followerHistory
   };
 };
 
@@ -441,13 +445,19 @@ const normalizeData = raw => {
     statusMap.set(status.id, status);
   });
   const sanitizedStatusCatalog = Array.from(statusMap.values());
-  return {
-    schemaVersion: Number.isFinite(raw.schemaVersion) ? raw.schemaVersion : (statusMap.size > 0 ? CURRENT_SCHEMA_VERSION : 1),
-    profiles: raw.profiles.map(sanitizeProfile),
-    listeners: raw.listeners.map(sanitizeListener),
+  const schemaVersion = Number.isFinite(raw.schemaVersion) ? raw.schemaVersion : (statusMap.size > 0 ? CURRENT_SCHEMA_VERSION : 1);
+  const rawProfiles = Array.isArray(raw.profiles) ? raw.profiles : [];
+  const rawListeners = Array.isArray(raw.listeners) ? raw.listeners : [];
+  const profiles = rawProfiles.map(sanitizeProfile);
+  const listeners = rawListeners.map(sanitizeListener);
+  const result = {
+    schemaVersion,
+    profiles,
+    listeners,
     giftTemplates: sanitizedTemplates,
     statusCatalog: sanitizedStatusCatalog
   };
+  return result;
 };
 
 // ステータスIDから定義を取得する（未定義の場合は null）
@@ -1226,8 +1236,12 @@ const confirmDeleteProfile = profile => {
 const openProfile = id => {
   currentProfile = profiles.find(p => p.id === id) || null;
   if (!currentProfile) return;
+  // followerHistory が未定義の場合に空配列で初期化して安全化する
+  if (!Array.isArray(currentProfile.followerHistory)) currentProfile.followerHistory = [];
   document.getElementById("profile-title").textContent = formatProfileLabel(currentProfile);
   renderStreams();
+  renderFollowerHistory();
+  initLocalTabs();
   showView("profile-detail-view");
 };
 
@@ -1235,7 +1249,37 @@ const renderStreams = () => {
   const list = document.getElementById("stream-list");
   list.innerHTML = "";
   if (!currentProfile) return;
-  currentProfile.streams.forEach(stream => {
+  
+  // 配信を日付・時刻の降順（新しい順）でソート
+  let sortedStreams = [...currentProfile.streams].sort((a, b) => {
+    const dateA = a.date || "";
+    const dateB = b.date || "";
+    const timeA = a.startTime || "";
+    const timeB = b.startTime || "";
+    const datetimeA = `${dateA} ${timeA}`;
+    const datetimeB = `${dateB} ${timeB}`;
+    return datetimeB.localeCompare(datetimeA);
+  });
+  
+  // 検索フィルタ適用
+  if (streamSearchQuery.trim()) {
+    const query = streamSearchQuery.trim().toLowerCase();
+    sortedStreams = sortedStreams.filter(stream => {
+      const title = (stream.title || "").toLowerCase();
+      return title.includes(query);
+    });
+  }
+  
+  // 検索結果が0件の場合
+  if (sortedStreams.length === 0 && streamSearchQuery.trim()) {
+    const emptyLi = document.createElement("li");
+    emptyLi.className = "empty-state";
+    emptyLi.textContent = "該当する配信が見つかりません";
+    list.appendChild(emptyLi);
+    return;
+  }
+  
+  sortedStreams.forEach(stream => {
     const li = document.createElement("li");
     const header = document.createElement("div");
     header.className = "list-item-header";
@@ -1266,6 +1310,125 @@ const renderStreams = () => {
     li.onclick = () => openStream(stream.id);
     list.appendChild(li);
   });
+};
+
+const renderFollowerHistory = () => {
+  if (!currentProfile) return;
+
+  // サマリー計算（followerHistory が未定義の場合は空配列にフォールバック）
+  const history = [...(Array.isArray(currentProfile.followerHistory) ? currentProfile.followerHistory : [])].sort((a, b) => b.date.localeCompare(a.date));
+  const currentCountEl = document.getElementById("current-follower-count");
+  const diffEl = document.getElementById("follower-diff");
+
+  if (history.length > 0) {
+    const latest = history[0];
+    currentCountEl.textContent = latest.count.toLocaleString();
+
+    if (history.length > 1) {
+      const previous = history[1];
+      const diff = latest.count - previous.count;
+      diffEl.textContent = (diff >= 0 ? "+" : "") + diff.toLocaleString();
+      diffEl.className = "summary-value " + (diff >= 0 ? "positive" : "negative");
+    } else {
+      diffEl.textContent = "-";
+      diffEl.className = "summary-value";
+    }
+  } else {
+    currentCountEl.textContent = "-";
+    diffEl.textContent = "-";
+    diffEl.className = "summary-value";
+  }
+
+  // 履歴リスト
+  const list = document.getElementById("follower-history-list");
+  list.innerHTML = "";
+  history.forEach(entry => {
+    const li = document.createElement("li");
+    const header = document.createElement("div");
+    header.className = "list-item-header";
+
+    const date = document.createElement("span");
+    date.className = "list-title";
+    date.textContent = entry.date;
+    header.appendChild(date);
+
+    const count = document.createElement("span");
+    count.className = "list-sub";
+    count.textContent = `登録者数: ${entry.count.toLocaleString()}`;
+    header.appendChild(count);
+
+    const actions = document.createElement("div");
+    actions.className = "list-item-actions";
+    actions.appendChild(createActionButton("編集", "edit", () => openFollowerHistoryEditor(entry)));
+    actions.appendChild(createActionButton("削除", "danger", () => confirmDeleteFollowerHistory(entry)));
+    header.appendChild(actions);
+
+    li.appendChild(header);
+
+    if (entry.note) {
+      const note = document.createElement("div");
+      note.className = "list-sub";
+      note.textContent = `メモ: ${entry.note}`;
+      li.appendChild(note);
+    }
+
+    list.appendChild(li);
+  });
+};
+
+const openFollowerHistoryEditor = entry => {
+  const isEdit = !!entry;
+  openModal(isEdit ? "履歴編集" : "履歴記録", [
+    { name: "date", label: "記録日", type: "date", value: entry ? entry.date : formatDateInputValue(new Date()) },
+    { name: "count", label: "登録者数", type: "number", value: entry ? entry.count : "", min: 0, inputmode: "numeric", step: 1 },
+    { name: "note", label: "メモ（任意）", type: "textarea", value: entry ? entry.note : "" }
+  ], values => {
+    const date = sanitizeDateInput(values.date);
+    const count = parseInt(values.count, 10);
+    const note = (values.note || "").trim();
+
+    if (!date) {
+      alert("記録日を入力してください。");
+      return;
+    }
+    if (Number.isNaN(count) || count < 0 || !Number.isInteger(count)) {
+      alert("登録者数は0以上の整数を入力してください。");
+      return;
+    }
+
+    // 同じ日付の重複チェック（編集時は自分自身を除外）
+    const fh = Array.isArray(currentProfile.followerHistory) ? currentProfile.followerHistory : [];
+    const duplicateEntry = fh.find(e => e.date === date && (!isEdit || e.id !== entry.id));
+    if (duplicateEntry) {
+      const proceed = confirm(`${date} には既に履歴が記録されています。\n上書きしますか？`);
+      if (!proceed) return;
+      // 既存の重複エントリを削除
+      currentProfile.followerHistory = fh.filter(e => e.id !== duplicateEntry.id);
+    }
+
+    if (isEdit) {
+      entry.date = date;
+      entry.count = count;
+      entry.note = note;
+    } else {
+      const newEntry = { id: generateId("fh"), date, count, note };
+      if (!Array.isArray(currentProfile.followerHistory)) currentProfile.followerHistory = [];
+      currentProfile.followerHistory.push(newEntry);
+    }
+
+    saveAppData();
+    renderFollowerHistory();
+    closeModal();
+  });
+};
+
+const confirmDeleteFollowerHistory = entry => {
+  if (!entry || !currentProfile) return;
+  const ok = confirm(`「${entry.date}」の記録を削除しますか？`);
+  if (!ok) return;
+  currentProfile.followerHistory = (currentProfile.followerHistory || []).filter(e => e.id !== entry.id);
+  saveAppData();
+  renderFollowerHistory();
 };
 
 const openStreamEditor = stream => {
@@ -2163,6 +2326,10 @@ function openModal(title, fields, onSubmit) {
       element = document.createElement("input");
       element.type = f.type || "text";
       element.placeholder = f.placeholder || labelText;
+      if (f.inputmode) element.setAttribute('inputmode', f.inputmode);
+      if (f.step !== undefined) element.setAttribute('step', String(f.step));
+      if (f.min !== undefined) element.setAttribute('min', String(f.min));
+      if (f.max !== undefined) element.setAttribute('max', String(f.max));
     }
     element.id = f.name;
     if (f.value !== undefined && !["static", "checkboxes", "checkbox"].includes(f.type || "")) {
@@ -2182,7 +2349,27 @@ function openModal(title, fields, onSubmit) {
     modalBody.appendChild(wrapper);
     if (f.type === "select" && f.value !== undefined) element.value = f.value;
   });
+  // アクセシビリティ属性とフォーカス処理
+  const modalEl = document.getElementById('modal');
+  if (modalEl) {
+    modalEl.setAttribute('role', 'dialog');
+    modalEl.setAttribute('aria-modal', 'true');
+    modalEl.setAttribute('aria-labelledby', 'modal-title');
+  }
   modalBg.style.display = "flex";
+  // フォーカスを最初の入力要素へ
+  setTimeout(() => {
+    const firstInput = modalBody.querySelector('input:not([type=hidden]):not([data-static]), textarea, select');
+    if (firstInput && typeof firstInput.focus === 'function') firstInput.focus();
+  }, 0);
+  // Escape キーで閉じるハンドラ（modalBg プロパティに保持して close 時に解除できるようにする）
+  modalBg._escHandler = e => { if (e.key === 'Escape') closeModal(); };
+  document.addEventListener('keydown', modalBg._escHandler);
+  const okBtn = document.getElementById("modal-ok");
+  // ボタンラベル: タイトルに「追加」が含まれる場合は「追加」、それ以外は「保存」を採用
+  if (okBtn) {
+    okBtn.textContent = /追加|作成/.test(title) ? '追加' : '保存';
+  }
   document.getElementById("modal-ok").onclick = () => {
     const values = {};
     fields.forEach(f => {
@@ -2208,6 +2395,11 @@ function openModal(title, fields, onSubmit) {
     onSubmit(values);
     saveAppData();
     closeModal();
+    // remove esc handler if present
+    if (modalBg && modalBg._escHandler) {
+      document.removeEventListener('keydown', modalBg._escHandler);
+      modalBg._escHandler = null;
+    }
   };
 }
 
@@ -2218,6 +2410,11 @@ const closeModal = () => {
   if (okBtn) {
     okBtn.textContent = "OK";
     okBtn.onclick = null;
+  }
+  // Escape ハンドラを解除
+  if (modalBg && modalBg._escHandler) {
+    document.removeEventListener('keydown', modalBg._escHandler);
+    modalBg._escHandler = null;
   }
 };
 document.getElementById("modal-cancel").onclick = closeModal;
@@ -2254,7 +2451,8 @@ if (addPlatformBtn) {
       accountName: (v.accountName || "").trim(),
       url: (v.url || "").trim().slice(0, 2048),
       note: (v.note || "").trim().slice(0, 1000),
-      streams: []
+      streams: [],
+      followerHistory: []
     };
     profiles.push(newProfile);
     renderPlatformList();
@@ -2265,7 +2463,7 @@ if (addPlatformBtn) {
 document.getElementById("add-stream").onclick = () => {
   openModal("配信追加", [
     { name: "title", label: "タイトル" },
-    { name: "date", label: "配信日", type: "date" },
+    { name: "date", label: "配信日", type: "date", value: formatDateInputValue(new Date()) },
     { name: "startTime", label: "開始時刻（任意）", type: "time" },
     {
       name: "url",
@@ -2274,6 +2472,16 @@ document.getElementById("add-stream").onclick = () => {
       placeholder: "https://example.com"
     }
   ], v => {
+    // URL の簡易検証
+    if (v.url && v.url.trim()) {
+      try {
+        // URL コンストラクタで検証（プロトコル必須）
+        new URL(v.url);
+      } catch (err) {
+        alert('配信 URL が不正です。スキーム（https://）を含めた正しいURLを入力してください。');
+        return;
+      }
+    }
     const newStream = sanitizeStream({
       id: generateId("s"),
       title: v.title,
@@ -3078,6 +3286,10 @@ document.getElementById("import-btn").onclick=()=>{
     const reader=new FileReader();
     reader.onload=()=>{
       try{
+        if (!reader.result || !reader.result.trim()) {
+          alert("ファイルが空です");
+          return;
+        }
         const parsed=JSON.parse(reader.result);
         const normalized=normalizeData(parsed);
         profiles=normalized.profiles;
@@ -3141,6 +3353,7 @@ openDB().then(async()=>{
   }
   renderDashboard();
   initTabNavigation();
+  initLocalTabs();
 });
 
 // タブナビゲーション機能
@@ -3151,6 +3364,52 @@ function initTabNavigation() {
       const target = btn.getAttribute('data-page-target');
       switchToTab(target);
     });
+  });
+}
+
+function initLocalTabs() {
+  const localTabButtons = document.querySelectorAll('.local-tab-btn');
+  localTabButtons.forEach(btn => {
+    btn.addEventListener('click', () => {
+      const target = btn.getAttribute('data-tab');
+      switchLocalTab(target);
+    });
+  });
+
+  // 登録者履歴追加ボタン
+  const addButton = document.getElementById('add-follower-history');
+  if (addButton) {
+    addButton.addEventListener('click', () => openFollowerHistoryEditor(null));
+  }
+
+  // 配信検索input
+  const streamSearchInput = document.getElementById('stream-search');
+  if (streamSearchInput) {
+    streamSearchInput.addEventListener('input', (e) => {
+      streamSearchQuery = e.target.value;
+      renderStreams();
+    });
+  }
+}
+
+function switchLocalTab(target) {
+  // すべてのローカルタブボタンの選択状態を解除
+  document.querySelectorAll('.local-tab-btn').forEach(btn => {
+    const btnTarget = btn.getAttribute('data-tab');
+    if (btnTarget === target) {
+      btn.classList.add('active');
+    } else {
+      btn.classList.remove('active');
+    }
+  });
+  // タブコンテンツの表示切り替え
+  document.querySelectorAll('.local-tab-content').forEach(content => {
+    const contentId = content.getAttribute('id');
+    if (contentId === `tab-content-${target}`) {
+      content.classList.add('active');
+    } else {
+      content.classList.remove('active');
+    }
   });
 }
 
