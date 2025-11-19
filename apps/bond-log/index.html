@@ -5,6 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>BondLog</title>
     <link rel="stylesheet" href="style.css" />
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
   </head>
 <body>
   <header class="app-header bg-brand-teal">
@@ -34,14 +36,14 @@
         <span class="tab-btn__icon">📺</span>
         <span class="tab-btn__label">
           <span class="tab-btn__label--short">プラットフォーム</span>
-          <span class="tab-btn__label--full">プラットフォーム一覧</span>
+          <span class="tab-btn__label--full">プラットフォーム</span>
         </span>
       </button>
       <button class="tab-btn" data-page-target="listener" aria-selected="false">
         <span class="tab-btn__icon">👤</span>
         <span class="tab-btn__label">
           <span class="tab-btn__label--short">リスナー</span>
-          <span class="tab-btn__label--full">リスナー一覧</span>
+          <span class="tab-btn__label--full">リスナー</span>
         </span>
       </button>
       <button class="tab-btn" data-page-target="status" aria-selected="false">
@@ -94,6 +96,26 @@
         </div>
         <p id="dashboard-listener-empty" class="empty-state">まだリスナーが登録されていません</p>
         <ul class="list" id="dashboard-listener-list"></ul>
+      </section>
+
+      <section class="home-section" id="home-follower-charts">
+        <div class="home-section-header">
+          <h2 class="home-section-title">登録者数の推移</h2>
+          <div class="chart-controls">
+            <label for="chart-duration-filter" style="font-size: 0.9rem; margin-right: 0.5rem;">期間:</label>
+            <select id="chart-duration-filter" style="padding: 0.2rem;">
+              <option value="all">すべて</option>
+              <option value="365">過去1年</option>
+              <option value="180">過去6ヶ月</option>
+              <option value="90">過去3ヶ月</option>
+              <option value="30">過去1ヶ月</option>
+            </select>
+          </div>
+        </div>
+
+        <div id="dashboard-follower-charts-container">
+          <p id="follower-charts-empty" class="empty-state">まだ登録者履歴を持つプラットフォームがありません</p>
+        </div>
       </section>
     </section>
 
@@ -230,7 +252,7 @@
 
     <!-- リスナー詳細 -->
     <section id="listener-detail-view" class="view">
-  <button class="back-btn" id="back-to-listeners">← トップへ戻る</button>
+  <button class="back-btn" id="back-to-listeners">← リスナーへ戻る</button>
 
       <div class="listener-header">
         <div class="listener-heading">

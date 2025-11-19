@@ -995,9 +995,33 @@ const buildLatestAttendanceMapAll = () => {
 };
 
 // === 共通UI ===
+const getViewTitle = id => {
+  switch(id) {
+    case "dashboard-view":
+      return "BondLog";
+    case "platform-list-view":
+      return "プラットフォーム一覧 - BondLog";
+    case "listener-list-view":
+      return "リスナー一覧 - BondLog";
+    case "profile-detail-view":
+      return currentProfile ? `${currentProfile.platform} ${currentProfile.accountName} - BondLog` : "プラットフォーム詳細 - BondLog";
+    case "listener-detail-view":
+      return currentListener ? `${currentListener.name} - BondLog` : "リスナー詳細 - BondLog";
+    case "stream-detail-view":
+      return "配信詳細 - BondLog";
+    case "status-list-view":
+      return "ステータス管理 - BondLog";
+    case "status-detail-view":
+      return "ステータス詳細 - BondLog";
+    default:
+      return "BondLog";
+  }
+};
+
 const showView = id => {
   document.querySelectorAll(".view").forEach(v => v.classList.remove("active"));
   document.getElementById(id).classList.add("active");
+  document.title = getViewTitle(id);
 };
 
 // 現在表示中のビューに応じて適切なレンダリング関数を呼び出す
@@ -1079,7 +1103,7 @@ const renderDashboard = () => {
       return compareNameAsc(a, b);
     });
     
-    const listenerPreview = sorted.slice(0, 5);
+    const listenerPreview = sorted.slice(0, 3);
     
     if (listenerPreview.length === 0) {
       dashboardListenerEmpty.style.display = "block";
@@ -1119,6 +1143,9 @@ const renderDashboard = () => {
       });
     }
   }
+
+  // 登録者数の推移グラフを描画
+  renderFollowerCharts(profiles);
 };
 
 const renderPlatformList = () => {
@@ -1239,9 +1266,11 @@ const openProfile = id => {
   // followerHistory が未定義の場合に空配列で初期化して安全化する
   if (!Array.isArray(currentProfile.followerHistory)) currentProfile.followerHistory = [];
   document.getElementById("profile-title").textContent = formatProfileLabel(currentProfile);
+  initLocalTabs();
   renderStreams();
   renderFollowerHistory();
-  initLocalTabs();
+  switchLocalTab("streams");
+  updateTabState('platform');
   showView("profile-detail-view");
 };
 
@@ -1583,7 +1612,7 @@ const openListener = id => {
         .filter(p => Boolean(p))
         .map(formatProfileLabel)
     : [];
-  document.getElementById("listener-profile").textContent = membershipLabels.length ? membershipLabels.join(" / ") : "紐付け済みプラットフォームなし";
+  document.getElementById("listener-profile").textContent = membershipLabels.length ? membershipLabels.join(" / ") : "関連付けられたプラットフォームはありません";
   document.getElementById("listener-name-static").textContent = currentListener.name;
   document.getElementById("listener-memo").textContent = currentListener.memo ? currentListener.memo : "メモはまだ登録されていません";
   renderListenerUrls();
@@ -1591,6 +1620,7 @@ const openListener = id => {
   renderListenerStatuses();
   renderListenerAttendances();
   renderListenerGifts();
+  updateTabState('listener');
   showView("listener-detail-view");
 };
 
@@ -2195,7 +2225,7 @@ const refreshListenerDetail = () => {
     : [];
   document.getElementById("listener-profile").textContent = membershipLabels.length
     ? membershipLabels.join(" / ")
-    : "紐付け済みプラットフォームなし";
+    : "関連付けられたプラットフォームはありません";
   document.getElementById("listener-name-static").textContent = currentListener.name;
   document.getElementById("listener-memo").textContent = currentListener.memo
     ? currentListener.memo
@@ -2534,8 +2564,8 @@ if (addListenerBtn) {
     ];
     if (profileOptions.length) {
       fields.push({
-        name: "profileIds",
-  label: "紐付けるプラットフォーム（任意）",
+          name: "profileIds",
+        label: "関連付けるプラットフォーム（任意）",
         type: "checkboxes",
         options: profileOptions
       });
@@ -2578,6 +2608,7 @@ const openStream = id => {
   if (scheduleElem) scheduleElem.textContent = formatStreamSchedule(currentStream);
   updateStreamUrlLink(currentStream);
   renderAttendees(); renderGifts();
+  updateTabState('platform');
   showView("stream-detail-view");
 };
 
@@ -2604,8 +2635,7 @@ const renderAttendees = () => {
       const statusContainer = document.createElement("div");
       const hasStatus = populateStatusContainer(statusContainer, getActiveStatusEntries(listener), {
         showEmpty: true,
-        size: "compact",
-        limit: 1
+        size: "compact"
       });
       if (hasStatus) titleBlock.appendChild(statusContainer);
     }
@@ -3058,15 +3088,13 @@ document.getElementById("app-title").onkeydown = event => {
   }
 };
 
-document.getElementById("back-to-profiles").onclick = navigateHome;
+document.getElementById("back-to-profiles").onclick = () => { saveAppData(); switchToTab('platform'); };
 document.getElementById("back-to-profile").onclick = ()=>{ saveAppData(); showView("profile-detail-view"); renderStreams(); };
-document.getElementById("back-to-listeners").onclick = () => {
-  navigateHome();
-};
+document.getElementById("back-to-listeners").onclick = () => { saveAppData(); switchToTab('listener');};
 
-// 戻るボタン（専用ページ→ダッシュボード）
-document.getElementById("back-to-dashboard-from-platform").onclick = navigateHome;
-document.getElementById("back-to-dashboard-from-listener").onclick = navigateHome;
+// 戻るボタン（プラットフォーム一覧→ダッシュボード）
+document.getElementById("back-to-dashboard-from-platform").onclick = () => { saveAppData(); navigateHome(); };
+document.getElementById("back-to-dashboard-from-listener").onclick = () => { saveAppData(); navigateHome(); };
 
 // 「すべて見る」ボタン
 document.getElementById("dashboard-view-all-platforms").onclick = () => switchToTab('platform');
@@ -3354,6 +3382,29 @@ openDB().then(async()=>{
   renderDashboard();
   initTabNavigation();
   initLocalTabs();
+
+  // --- グラフ機能用イベントリスナー ---
+
+  // 期間変更イベントリスナー
+  const durationFilter = document.getElementById('chart-duration-filter');
+  if (durationFilter) {
+    durationFilter.addEventListener('change', () => {
+      currentChartDuration = durationFilter.value;
+      renderFollowerCharts(profiles);
+    });
+  }
+
+  // ダッシュボードタブクリックイベントリスナー（タブ切り替え時の再描画）
+  const dashboardTab = document.querySelector('.tab-btn[data-page-target="dashboard"]');
+  if (dashboardTab) {
+    dashboardTab.addEventListener('click', () => {
+      // 遅延実行でグラフを描画
+      setTimeout(() => renderFollowerCharts(profiles), 100);
+    });
+  }
+
+  // 初回データロード後の描画処理（遅延実行）
+  setTimeout(() => renderFollowerCharts(profiles), 100);
 });
 
 // タブナビゲーション機能
@@ -3457,4 +3508,121 @@ function switchToTab(target) {
   } else {
     updateTabState(prevTarget);
   }
+}
+
+// --- グラフ機能用コード開始 ---
+
+const followerCharts = {};
+let currentChartDuration = 'all';
+
+/**
+ * データを整形し、期間でフィルタリングする
+ */
+function prepareAndFilterChartData(history, duration) {
+    if (!history || !Array.isArray(history) || history.length < 1) {
+        return { dates: [], counts: [] };
+    }
+
+    // 日付順にソート
+    const sortedHistory = [...history].sort((a, b) => new Date(a.date) - new Date(b.date));
+    let filteredHistory = sortedHistory;
+
+    // 期間フィルタ適用
+    if (duration !== 'all') {
+        const days = parseInt(duration, 10);
+        const cutoffDate = new Date();
+        cutoffDate.setDate(cutoffDate.getDate() - days);
+        filteredHistory = sortedHistory.filter(item => new Date(item.date) >= cutoffDate);
+    }
+
+    return {
+        dates: filteredHistory.map(item => item.date),
+        counts: filteredHistory.map(item => parseInt(item.count, 10))
+    };
+}
+
+/**
+ * グラフを描画するメイン関数
+ * @param {Array} profiles - アプリの全データ (appData.profiles)
+ */
+function renderFollowerCharts(profiles) {
+    const container = document.getElementById('dashboard-follower-charts-container');
+    if (!container) return;
+
+    // メモリリーク防止のため既存グラフを破棄
+    Object.keys(followerCharts).forEach(key => {
+        if (followerCharts[key]) followerCharts[key].destroy();
+    });
+    container.innerHTML = '';
+
+    const validProfiles = profiles.filter(p => p.followerHistory && p.followerHistory.length > 0);
+    if (validProfiles.length === 0) {
+        container.innerHTML = '<p class="empty-state">まだ登録者履歴を持つプラットフォームがありません</p>';
+        return;
+    }
+
+    validProfiles.forEach(profile => {
+        const { dates, counts } = prepareAndFilterChartData(profile.followerHistory, currentChartDuration);
+
+        // カード生成
+        const card = document.createElement('div');
+        card.className = 'chart-card';
+        card.innerHTML = `<h3 class="chart-card-title">${profile.accountName} (${profile.platform})</h3>`;
+
+        // データ不足チェック
+        if (counts.length < 2) {
+            const msg = document.createElement('p');
+            msg.className = 'empty-state';
+            msg.style.fontSize = '0.85rem';
+            msg.textContent = `データ不足（${counts.length}件）。グラフ表示には2件以上の記録が必要です。`;
+            card.appendChild(msg);
+            container.appendChild(card);
+            return;
+        }
+
+        // Canvas生成
+        const canvasContainer = document.createElement('div');
+        canvasContainer.style.position = 'relative';
+        canvasContainer.style.height = '300px';
+        canvasContainer.style.width = '100%';
+
+        const canvas = document.createElement('canvas');
+        canvas.id = `chart-${profile.id}`;
+        canvas.className = 'follower-chart-canvas'; // CSSクラス適用
+        canvasContainer.appendChild(canvas);
+        card.appendChild(canvasContainer);
+        container.appendChild(card);
+
+        // Chart.js インスタンス生成
+        const ctx = canvas.getContext('2d');
+        followerCharts[profile.id] = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: dates,
+                datasets: [{
+                    label: '登録者数',
+                    data: counts,
+                    borderColor: '#20c997',
+                    backgroundColor: 'rgba(32, 201, 151, 0.1)',
+                    borderWidth: 2,
+                    tension: 0.1,
+                    fill: true,
+                    pointRadius: 4
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    x: {
+                        type: 'time',
+                        time: { unit: 'day', displayFormats: { day: 'MM/dd' }, tooltipFormat: 'yyyy/MM/dd' },
+                        title: { display: true, text: '日付' }
+                    },
+                    y: { beginAtZero: false, ticks: { precision: 0 } }
+                },
+                plugins: { legend: { display: false } }
+            }
+        });
+    });
 }

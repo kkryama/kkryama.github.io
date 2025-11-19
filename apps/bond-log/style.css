@@ -696,3 +696,34 @@ a {
 .summary-diff .summary-value.negative {
   color: var(--bond-red);
 }
+
+/* グラフカードのコンテナ */
+.chart-card {
+  background: #fff;
+  border: 1px solid #eee;
+  border-radius: 8px;
+  padding: 1rem;
+  margin-bottom: 1rem;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+}
+
+.chart-card-title {
+  font-size: 1rem;
+  margin-bottom: 0.5rem;
+  color: #333;
+  border-bottom: 1px solid #f0f0f0;
+  padding-bottom: 0.5rem;
+}
+
+/* Canvasサイズ固定 */
+.follower-chart-canvas {
+  width: 100% !important;
+  height: 300px !important;
+  max-height: 300px;
+}
+
+/* ヘッダー調整 */
+.chart-controls {
+  display: flex;
+  align-items: center;
+}
