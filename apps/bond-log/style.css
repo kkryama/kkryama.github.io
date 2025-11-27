@@ -21,7 +21,15 @@
 }
 
 *, *::before, *::after { box-sizing: border-box; }
-body { font-family: sans-serif; margin: 0; background: var(--bond-bg); color: var(--bond-text); }
+body {
+  font-family: sans-serif;
+  margin: 0;
+  background: var(--bond-bg);
+  color: var(--bond-text);
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
 
 /* ヘッダー */
 .app-header { 
@@ -47,7 +55,11 @@ body { font-family: sans-serif; margin: 0; background: var(--bond-bg); color: va
 #menu { display: none; position: absolute; top: 48px; right: 8px; background: var(--bond-bg-white); color: var(--bond-text); box-shadow: 0 2px 6px rgba(0,0,0,0.2); border-radius: 6px; overflow: hidden; z-index: 100; }
 #menu button { display: block; width: 100%; border: none; background: none; padding: 10px 16px; text-align: left; cursor: pointer; }
 #menu button:hover { background: var(--bond-bg); }
-main { padding: 12px; }
+main {
+  padding: 12px;
+  flex-grow: 1;
+  padding-bottom: 4em;
+}
 
 /* ページナビゲーション */
 .page-nav {
@@ -726,4 +738,16 @@ a {
 .chart-controls {
   display: flex;
   align-items: center;
+}
+
+footer {
+  background: #222;
+  color: #fff;
+  text-align: center;
+  padding: 0.5em 0;
+  position: fixed;
+  bottom: 0;
+  width: 100%;
+  z-index: 10;
+  min-height: 2em;
 }
