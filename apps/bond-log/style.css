@@ -751,3 +751,15 @@ footer {
   z-index: 10;
   min-height: 2em;
 }
+
+/* スマホ（768px以下）ではフッターの固定を解除 */
+@media (max-width: 768px) {
+  footer {
+    position: static;
+    margin-top: auto;
+  }
+
+  main {
+    padding-bottom: 0;
+  }
+}
