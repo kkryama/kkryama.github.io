@@ -10,7 +10,7 @@
   - エンティティ: platform, stream, listener, status, gift, follower, participant
   - アクション: list, detail, add, edit, assign, log, management, badge, tags, history, graph, template
   - 例: `platform-list.png`, `listener-detail.png`, `status-assign.png`
-- **一般画面**: `dashboard.png`, `menu.png`, `tab-navigation.png`
+- **一般画面**: `dashboard.png`, `dashboard-blank.png`, `menu.png`, `tab-navigation.png`
 - **機能別**: 特定の機能に該当しないものは `feature-name.png`
 
 ## 現在の画像ファイル
@@ -54,6 +54,7 @@
 
 ### 一般
 - `dashboard.png` - ダッシュボード
+- `dashboard-blank.png` - ダッシュボード（ブランク状態）
 - `menu.png` - メニュー画面
 
 ## 画像の要件
@@ -73,7 +74,8 @@
 
 ### 各画像の取得方法
 
-- `dashboard.png`: アプリ起動直後のダッシュボード画面
+- `dashboard.png`: アプリ起動直後のダッシュボード画面（データが入っている状態）
+- `dashboard-blank.png`: アプリ起動直後のダッシュボード画面（ブランク状態）
 - `platform-list.png`: 📺 プラットフォームタブからプラットフォーム一覧画面
 - `platform-detail.png`: プラットフォーム一覧から任意のプラットフォームをクリック
 - `platform-add.png`: プラットフォーム一覧の「＋ プラットフォームを追加」ボタンクリック

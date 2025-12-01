@@ -11,7 +11,7 @@
   
   /* 既存の色を保持（段階的に移行） */
   --bond-primary: #ff4b4b;
-  --bond-primary-light: #ffe3e3;
+  --bond-primary-light: #ffe9e9;
   --bond-bg-white: #ffffff;
   --bond-bg-light: #fafafa;
   --bond-text-light: #666;
@@ -125,6 +125,14 @@ main {
 }
 
 .home-hero { background: var(--bond-primary-light); border-radius: 8px; border-left: 4px solid var(--bond-teal); padding: 16px; margin-bottom: 32px; }
+.home-hero-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+.home-hero-header h3 { margin: 0; font-size: 1.2em; }
+.toggle-btn { background: none; border: none; font-size: 1.2em; cursor: pointer; padding: 4px; border-radius: 4px; transition: background 0.2s; }
+.toggle-btn:hover { background: rgba(0,0,0,0.1); }
+.home-hero-content { transition: all 0.3s ease; }
+.home-hero.collapsed .home-hero-content { display: none; }
+.home-hero.collapsed .toggle-btn::before { content: '▶'; }
+.home-hero .toggle-btn::before { content: '▼'; }
 .home-hero p { margin: 0 0 8px; line-height: 1.6; }
 .home-hero p:last-child { margin-bottom: 0; }
 .view { display: none; }

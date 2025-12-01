@@ -60,27 +60,36 @@
     <!-- ダッシュボード -->
     <section id="dashboard-view" class="view active">
       <section class="home-hero" aria-label="BondLogの概要">
-        <p>BondLogは、配信者とリスナーの絆(Bond)を記録(Log)するアプリです。</p>
-        <p>プラットフォームごとに配信と参加してくれたリスナーを記録できます。</p>
-        <p>
-          <strong>プライバシー保護:</strong> 
-          サーバーにデータを送信せず、すべてお使いの端末内にのみ保存されます。
-          <br>
-          ※ 公共の端末(ネットカフェなど)でのご利用にはご注意ください。
-        </p>
-        <p>
-          <strong>初めての方へ:</strong>
-          まずは<a href="sample-data.json" download>サンプルデータ</a>をダウンロードし、
-          右上のメニューから「📂 インポート」を選んで読み込むと、すぐに各機能をお試しいただけます。
-          <br>
-          試用後、ご自身のデータを登録する際は、メニューから「🗑️ データ初期化」を選択してください。
-        </p>
-        <p>
-          <a href="UserGuide.html" target="_blank" rel="noopener noreferrer">📖 使い方ガイドを見る</a>
-        </p>
-        <p>
-          <a href="Glossary.html" target="_blank" rel="noopener noreferrer">📚 用語集を見る</a>
-        </p>
+        <div class="home-hero-header">
+          <h3>BondLogについて</h3>
+          <button id="toggle-hero" class="toggle-btn" aria-label="概要セクションを開閉"></button>
+        </div>
+        <div class="home-hero-content">
+          <p>BondLogは、配信者とリスナーの絆(Bond)を記録(Log)するアプリです。</p>
+          <p>プラットフォームごとに配信と参加してくれたリスナーを記録できます。</p>
+          <p>
+            <strong>プライバシー保護:</strong>
+            サーバーにデータを送信せず、すべてお使いの端末内にのみ保存されます。<br>
+            ※ 公共の端末(ネットカフェなど)でのご利用にはご注意ください。<br>
+            <strong class="warning-text">サーバにデータは保存されないので必ず「エクスポート」でデータをバックアップしてください</strong>
+          </p>
+          <p>
+            <strong>初めての方へ:</strong>
+            <a href="sample-data.json" download>サンプルデータ</a>をダウンロード後、
+            右上のメニュー「📂 インポート」で読み込むと各機能をお試しいただけます。
+            <br>
+            試用後、ご自身のデータを登録する際は、メニューから「🗑️ データ初期化」を選択してください。
+          </p>
+          <p>
+            <a href="UserGuide.html" target="_blank" rel="noopener noreferrer">📖 使い方ガイドを見る</a>
+          </p>
+          <p>
+            <a href="Glossary.html" target="_blank" rel="noopener noreferrer">📚 用語集を見る</a>
+          </p>
+          <p>
+            <a href="use-cases/index.html" target="_blank" rel="noopener noreferrer">💡 このような使い方ができます（使い方集）</a>
+          </p>
+        </div>
       </section>
 
       <section class="home-section" id="home-profiles">

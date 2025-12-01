@@ -3403,6 +3403,23 @@ openDB().then(async()=>{
     });
   }
 
+  // ヒーローセクション開閉機能
+  const toggleHeroBtn = document.getElementById('toggle-hero');
+  const heroSection = document.querySelector('.home-hero');
+  if (toggleHeroBtn && heroSection) {
+    // ローカルストレージから状態を読み込み
+    const isCollapsed = localStorage.getItem('heroCollapsed') === 'true';
+    if (isCollapsed) {
+      heroSection.classList.add('collapsed');
+    }
+
+    toggleHeroBtn.addEventListener('click', () => {
+      heroSection.classList.toggle('collapsed');
+      const collapsed = heroSection.classList.contains('collapsed');
+      localStorage.setItem('heroCollapsed', collapsed);
+    });
+  }
+
   // 初回データロード後の描画処理（遅延実行）
   setTimeout(() => renderFollowerCharts(profiles), 100);
 });
