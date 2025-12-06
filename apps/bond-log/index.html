@@ -87,7 +87,7 @@
             <a href="Glossary.html" target="_blank" rel="noopener noreferrer">📚 用語集を見る</a>
           </p>
           <p>
-            <a href="use-cases/index.html" target="_blank" rel="noopener noreferrer">💡 このような使い方ができます（使い方集）</a>
+            <a href="use-cases/index.html" target="_blank" rel="noopener noreferrer">💡 このような使い方ができます（ユースケース集）</a>
           </p>
         </div>
       </section>
@@ -160,13 +160,23 @@
           <button class="secondary" id="add-listener-btn">＋ リスナーを追加</button>
         </div>
         <div class="list-toolbar">
-          <label for="listener-sort">表示順</label>
-          <select id="listener-sort">
-            <option value="name-asc">名前（昇順）</option>
-            <option value="name-desc">名前（降順）</option>
-            <option value="last-attended-desc">最終参加日時（新しい順）</option>
-            <option value="last-attended-asc">最終参加日時（古い順）</option>
-          </select>
+          <div class="toolbar-labels">
+            <label for="listener-sort">表示順</label>
+            <label for="listener-status-filter">ステータスで検索</label>
+            <label for="listener-tag-search">タグで検索</label>
+          </div>
+          <div class="toolbar-controls">
+            <select id="listener-sort">
+              <option value="name-asc">名前（昇順）</option>
+              <option value="name-desc">名前（降順）</option>
+              <option value="last-attended-desc">最終参加日時（新しい順）</option>
+              <option value="last-attended-asc">最終参加日時（古い順）</option>
+            </select>
+            <select id="listener-status-filter">
+              <option value="">すべて</option>
+            </select>
+            <input type="text" id="listener-tag-search" placeholder="タグを入力" />
+          </div>
         </div>
       </div>
       <p id="listener-empty" class="empty-state">まだリスナーが登録されていません</p>

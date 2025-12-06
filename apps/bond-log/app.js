@@ -1510,6 +1510,10 @@ const renderListenerList = () => {
   const list = document.getElementById("listener-list");
   const emptyMessage = document.getElementById("listener-empty");
   if (!list || !emptyMessage) return;
+  
+  // ステータスフィルタオプションを初期化
+  initializeListenerStatusFilter();
+  
   list.innerHTML = "";
   const latestAttendanceMap = buildLatestAttendanceMapAll();
   const sortSelect = document.getElementById("listener-sort");
@@ -1520,6 +1524,31 @@ const renderListenerList = () => {
     return (a.id || "").localeCompare(b.id || "");
   };
   const sorted = [...listeners];
+  
+  // ステータスフィルタ適用
+  const statusFilterSelect = document.getElementById("listener-status-filter");
+  const statusFilterValue = statusFilterSelect ? statusFilterSelect.value : "";
+  if (statusFilterValue) {
+    const filtered = sorted.filter(listener => {
+      const activeStatuses = getActiveStatusEntries(listener);
+      return activeStatuses.some(statusEntry => statusEntry.assignment.statusId === statusFilterValue);
+    });
+    sorted.length = 0;
+    sorted.push(...filtered);
+  }
+  
+  // タグ検索適用
+  const tagSearchInput = document.getElementById("listener-tag-search");
+  const tagSearchValue = tagSearchInput ? tagSearchInput.value.trim() : "";
+  if (tagSearchValue) {
+    const filtered = sorted.filter(listener => {
+      if (!Array.isArray(listener.tags)) return false;
+      return listener.tags.some(tag => tag.toLowerCase().includes(tagSearchValue.toLowerCase()));
+    });
+    sorted.length = 0;
+    sorted.push(...filtered);
+  }
+  
   sorted.sort((a, b) => {
     switch (listenerSortMode) {
       case "name-desc":
@@ -1546,6 +1575,19 @@ const renderListenerList = () => {
     }
   });
   if (!sorted.length) {
+    if (statusFilterValue && tagSearchValue) {
+      const statusDef = getStatusDefinitionById(statusFilterValue);
+      const statusName = statusDef ? statusDef.displayName : "該当ステータス";
+      emptyMessage.textContent = `まだ「${statusName}」のステータスを持ち、「${tagSearchValue}」を含むタグのリスナーが登録されていません`;
+    } else if (statusFilterValue) {
+      const statusDef = getStatusDefinitionById(statusFilterValue);
+      const statusName = statusDef ? statusDef.displayName : "該当ステータス";
+      emptyMessage.textContent = `まだ「${statusName}」のステータスを持つリスナーが登録されていません`;
+    } else if (tagSearchValue) {
+      emptyMessage.textContent = `まだ「${tagSearchValue}」を含むタグのリスナーが登録されていません`;
+    } else {
+      emptyMessage.textContent = "まだリスナーが登録されていません";
+    }
     emptyMessage.style.display = "block";
     return;
   }
@@ -3643,3 +3685,50 @@ function renderFollowerCharts(profiles) {
         });
     });
 }
+
+const initializeListenerStatusFilter = () => {
+  const filterSelect = document.getElementById('listener-status-filter');
+  if (!filterSelect) return;
+  
+  // 現在の選択値を保存
+  const currentValue = filterSelect.value;
+  
+  // 既存のオプションをクリア（「すべて」は残す）
+  filterSelect.innerHTML = '<option value="">すべて</option>';
+  
+  // アクティブなステータスを取得
+  const activeStatuses = statusCatalog.filter(status => !status.isArchived);
+  
+  // 表示優先度でソート
+  activeStatuses.sort((a, b) => (b.displayPriority || 0) - (a.displayPriority || 0));
+  
+  // オプションを追加
+  activeStatuses.forEach(status => {
+    const option = document.createElement('option');
+    option.value = status.id;
+    option.textContent = status.displayName;
+    filterSelect.appendChild(option);
+  });
+  
+  // 選択値を復元（有効なオプションが存在する場合のみ）
+  if (currentValue && filterSelect.querySelector(`option[value="${currentValue}"]`)) {
+    filterSelect.value = currentValue;
+  }
+  
+  // イベントリスナーを設定（既に設定されている場合は追加しない）
+  if (!filterSelect.hasAttribute('data-listener-attached')) {
+    filterSelect.addEventListener('change', () => {
+      renderListenerList();
+    });
+    filterSelect.setAttribute('data-listener-attached', 'true');
+  }
+  
+  // タグ検索フィールドのイベントリスナーを設定
+  const tagSearchInput = document.getElementById('listener-tag-search');
+  if (tagSearchInput && !tagSearchInput.hasAttribute('data-listener-attached')) {
+    tagSearchInput.addEventListener('input', () => {
+      renderListenerList();
+    });
+    tagSearchInput.setAttribute('data-listener-attached', 'true');
+  }
+};
