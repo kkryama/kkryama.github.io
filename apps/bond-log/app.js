@@ -1797,7 +1797,7 @@ const openListenerStatusManager = () => {
     },
     {
       name: "statusActivatedDate",
-      label: "付与日",
+      label: "日付",
       type: "date",
       value: formatDateInputValue(now)
     },
