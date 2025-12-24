@@ -38,5 +38,5 @@ permalink: /profile.html
     - DM を開放しています
 - Line: [\_yama\_p\_](https://line.me/ti/p/e8Np_Ew3jC)
     - 取り込んでいるとき、寝落ちしているとき以外は早めに反応できるかと
-- Discord: [\_yama\_P\_](https://discord.gg/d4RP4Fe4)
-    - 最近は反応遅めかも
+- Discord: [\_yama\_P\_](https://discord.com/users/840536327556300820)
+    - リンクもしくは id(`_yama_P_`) で検索からどうぞ
