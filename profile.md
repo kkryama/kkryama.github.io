@@ -14,6 +14,7 @@ permalink: /profile.html
 - Qiita: [\_yama\_P\_](https://qiita.com/_yama_P_)
 - X(Twitter): [@\_yama\_P\_](https://x.com/_yama_P_)
     - X(Twitter) Closed Account: [@\_P\_amay\_](https://x.com/_P_amay_)
+- マシュマロ [\_yama\_P\_](https://marshmallow-qa.com/ouoqyuiwz5cr3d8)
 
 ## スキル
 - Golang
