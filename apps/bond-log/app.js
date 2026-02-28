@@ -14,7 +14,10 @@ let db,
   listenerSortMode = "name-asc",
   platformSortMode = "name-asc",
   streamSearchQuery = "";
+let topListenerPeriodFilter = "30";
+let topListenerPlatformFilter = "all";
 const nameCollator = new Intl.Collator("ja", { sensitivity: "base" });
+const numberFormatter = new Intl.NumberFormat("ja-JP");
 const PLATFORM_CANDIDATES = [
   "YouTube",
   "Twitch",
@@ -32,6 +35,26 @@ const PLATFORM_CANDIDATES = [
   "Withny",
   "RPLAY"
 ];
+
+const AUTO_BACKUP_INTERVAL_MS = 30 * 1000;
+const AUTO_BACKUP_HANDLE_KEY = "bondlog:auto-backup-dir";
+const autoBackup = {
+  dirHandle: null,
+  timerId: null,
+  isRunning: false,
+  hasChanges: true,
+  lastHash: null,
+  supported: typeof window !== "undefined" && typeof window.showDirectoryPicker === "function"
+};
+let autoBackupSoonTimer = null;
+let autoBackupSilenceNextDirty = false;
+const autoBackupElements = {
+  button: typeof document !== "undefined" ? document.getElementById("auto-backup-btn") : null,
+  status: typeof document !== "undefined" ? document.getElementById("auto-backup-status") : null
+};
+let footerSafeSpaceObserver = null;
+let footerSafeSpaceResizeBound = false;
+const handleStore = createHandleStore();
 
 // リスナーごとに保持する URL の最大数
 const MAX_LISTENER_URLS = 5;
@@ -196,17 +219,22 @@ function openDB() {
   });
 }
 
-function saveAppData() {
-  const tx = db.transaction(STORE_NAME, "readwrite");
-  schemaVersion = CURRENT_SCHEMA_VERSION;
-  const payload = {
+function currentPayload() {
+  return {
     schemaVersion,
     profiles,
     listeners,
     statusCatalog,
     giftTemplates
   };
+}
+
+function saveAppData() {
+  const tx = db.transaction(STORE_NAME, "readwrite");
+  schemaVersion = CURRENT_SCHEMA_VERSION;
+  const payload = currentPayload();
   tx.objectStore(STORE_NAME).put({ id: "main", data: payload });
+  markAutoBackupDirty();
 }
 
 async function loadAppData() {
@@ -994,6 +1022,258 @@ const buildLatestAttendanceMapAll = () => {
   return map;
 };
 
+const ensureTopListenerFilterHandlers = (periodSelect, platformSelect) => {
+  if (periodSelect && !periodSelect.dataset.topListenerBound) {
+    periodSelect.addEventListener("change", () => {
+      topListenerPeriodFilter = periodSelect.value || "30";
+      renderTopListenerSection();
+    });
+    periodSelect.dataset.topListenerBound = "true";
+  }
+  if (platformSelect && !platformSelect.dataset.topListenerBound) {
+    platformSelect.addEventListener("change", () => {
+      topListenerPlatformFilter = platformSelect.value || "all";
+      renderTopListenerSection();
+    });
+    platformSelect.dataset.topListenerBound = "true";
+  }
+};
+
+const populateTopListenerPlatformOptions = select => {
+  if (!select) return;
+  const desiredValue = topListenerPlatformFilter;
+  const fragment = document.createDocumentFragment();
+  const allOption = document.createElement("option");
+  allOption.value = "all";
+  allOption.textContent = "すべてのプラットフォーム";
+  fragment.appendChild(allOption);
+
+  const sortedProfiles = [...profiles].sort((a, b) => nameCollator.compare(formatProfileLabel(a), formatProfileLabel(b)));
+  sortedProfiles.forEach(profile => {
+    const option = document.createElement("option");
+    option.value = profile.id;
+    option.textContent = formatProfileLabel(profile);
+    fragment.appendChild(option);
+  });
+
+  select.innerHTML = "";
+  select.appendChild(fragment);
+  if (desiredValue && select.querySelector(`option[value="${desiredValue}"]`)) {
+    select.value = desiredValue;
+  } else {
+    select.value = "all";
+  }
+};
+
+const collectTopListenerStreams = (periodValue, platformValue) => {
+  const days = periodValue === "all" ? null : Number.parseInt(periodValue, 10);
+  let cutoff = null;
+  if (Number.isFinite(days) && days > 0) {
+    cutoff = new Date();
+    cutoff.setHours(0, 0, 0, 0);
+    cutoff.setDate(cutoff.getDate() - days);
+  }
+
+  const targetProfiles = platformValue === "all"
+    ? profiles
+    : profiles.filter(profile => profile.id === platformValue);
+
+  const entries = [];
+  targetProfiles.forEach(profile => {
+    if (!profile || !Array.isArray(profile.streams)) return;
+    profile.streams.forEach(stream => {
+      const parsedDate = parseStreamDate(stream.date, stream.startTime);
+      if (!parsedDate) return;
+      if (cutoff && parsedDate < cutoff) return;
+      entries.push({ profile, stream, parsedDate });
+    });
+  });
+  return entries;
+};
+
+const createTopListenerRow = (listener, metricText, latestText) => {
+  const li = document.createElement("li");
+  li.className = "top-listener-item";
+
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "top-listener-row";
+  button.onclick = () => openListener(listener.id);
+  button.title = `${listener.name || "(名称未設定)"} - ${metricText}`;
+
+  const header = document.createElement("div");
+  header.className = "top-listener-row-header";
+
+  const nameEl = document.createElement("span");
+  nameEl.className = "list-title";
+  nameEl.textContent = listener.name || "(名称未設定)";
+  header.appendChild(nameEl);
+
+  const statusContainer = document.createElement("div");
+  const hasStatus = populateStatusContainer(statusContainer, getActiveStatusEntries(listener), { showEmpty: false, size: "compact" });
+  if (hasStatus) {
+    statusContainer.classList.add("top-listener-row-statuses");
+    header.appendChild(statusContainer);
+  }
+
+  const body = document.createElement("div");
+  body.className = "top-listener-row-body";
+
+  const metricEl = document.createElement("div");
+  metricEl.className = "top-listener-row-metric";
+  metricEl.textContent = metricText;
+  body.appendChild(metricEl);
+
+  const latestEl = document.createElement("div");
+  latestEl.className = "top-listener-row-latest";
+  latestEl.textContent = latestText;
+  body.appendChild(latestEl);
+
+  button.appendChild(header);
+  button.appendChild(body);
+  li.appendChild(button);
+  return li;
+};
+
+const renderTopListenerAttendanceRanking = (streamEntries, listElement, emptyElement) => {
+  listElement.innerHTML = "";
+  if (!Array.isArray(streamEntries)) {
+    emptyElement.textContent = "期間内に対象となる配信がありません";
+    emptyElement.style.display = "block";
+    return;
+  }
+
+  const totalStreams = streamEntries.length;
+  if (totalStreams === 0) {
+    emptyElement.textContent = "期間内に対象となる配信がありません";
+    emptyElement.style.display = "block";
+    return;
+  }
+
+  const stats = new Map();
+  streamEntries.forEach(({ stream, parsedDate }) => {
+    const attendees = Array.isArray(stream.attendees) ? stream.attendees : [];
+    attendees.forEach(listenerId => {
+      if (!listenerId) return;
+      const listener = getListenerById(listenerId);
+      if (!listener) return;
+      const existing = stats.get(listener.id) || { listener, count: 0, latest: null };
+      existing.count += 1;
+      if (!existing.latest || existing.latest < parsedDate) existing.latest = parsedDate;
+      stats.set(listener.id, existing);
+    });
+  });
+
+  if (stats.size === 0) {
+    emptyElement.textContent = "期間内に参加したリスナーがまだいません";
+    emptyElement.style.display = "block";
+    return;
+  }
+
+  emptyElement.style.display = "none";
+  const ranking = [...stats.values()].sort((a, b) => {
+    const aRate = a.count / totalStreams;
+    const bRate = b.count / totalStreams;
+    if (bRate !== aRate) return bRate - aRate;
+    if (b.count !== a.count) return b.count - a.count;
+    return nameCollator.compare((a.listener.name || "").trim(), (b.listener.name || "").trim());
+  }).slice(0, 5);
+
+  ranking.forEach(entry => {
+    const ratePercent = ((entry.count / totalStreams) * 100).toFixed(1);
+    const metricText = `参加率 ${ratePercent}% (${entry.count}/${totalStreams})`;
+    const latestText = entry.latest
+      ? `最終参加: ${formatDateTimeForDisplay(entry.latest.toISOString())}`
+      : "最終参加: 記録なし";
+    listElement.appendChild(createTopListenerRow(entry.listener, metricText, latestText));
+  });
+};
+
+const renderTopListenerGiftRanking = (streamEntries, listElement, emptyElement) => {
+  listElement.innerHTML = "";
+  if (!Array.isArray(streamEntries) || streamEntries.length === 0) {
+    emptyElement.textContent = "期間内に対象となる配信がありません";
+    emptyElement.style.display = "block";
+    return;
+  }
+
+  const stats = new Map();
+  let hasGiftRecords = false;
+  streamEntries.forEach(({ stream, parsedDate }) => {
+    const gifts = Array.isArray(stream.gifts) ? stream.gifts : [];
+    if (gifts.length > 0) hasGiftRecords = true;
+    gifts.forEach(gift => {
+      if (!gift || !gift.listenerId) return;
+      const amount = parseGiftAmount(gift.amount);
+      if (amount === null) return;
+      const listener = getListenerById(gift.listenerId);
+      if (!listener) return;
+      const existing = stats.get(listener.id) || { listener, totalAmount: 0, latest: null };
+      existing.totalAmount += amount;
+      if (!existing.latest || existing.latest < parsedDate) existing.latest = parsedDate;
+      stats.set(listener.id, existing);
+    });
+  });
+
+  if (stats.size === 0) {
+    emptyElement.textContent = hasGiftRecords ? "金額未入力のギフトのみです" : "期間内のギフト記録がありません";
+    emptyElement.style.display = "block";
+    return;
+  }
+
+  emptyElement.style.display = "none";
+  const ranking = [...stats.values()].sort((a, b) => {
+    if (b.totalAmount !== a.totalAmount) return b.totalAmount - a.totalAmount;
+    const aTime = a.latest ? a.latest.getTime() : 0;
+    const bTime = b.latest ? b.latest.getTime() : 0;
+    if (bTime !== aTime) return bTime - aTime;
+    return nameCollator.compare((a.listener.name || "").trim(), (b.listener.name || "").trim());
+  }).slice(0, 5);
+
+  ranking.forEach(entry => {
+    const metricText = `合計 ${numberFormatter.format(Math.round(entry.totalAmount))}`;
+    const latestText = entry.latest
+      ? `最新ギフト: ${formatDateTimeForDisplay(entry.latest.toISOString())}`
+      : "最新ギフト: 記録なし";
+    listElement.appendChild(createTopListenerRow(entry.listener, metricText, latestText));
+  });
+};
+
+const renderTopListenerSection = () => {
+  const periodSelect = document.getElementById("top-listener-filter-period");
+  const platformSelect = document.getElementById("top-listener-filter-platform");
+  const attendanceList = document.getElementById("top-listener-attendance-list");
+  const attendanceEmpty = document.getElementById("top-listener-attendance-empty");
+  const giftList = document.getElementById("top-listener-gift-list");
+  const giftEmpty = document.getElementById("top-listener-gift-empty");
+  const loading = document.getElementById("top-listener-loading");
+
+  if (!periodSelect || !platformSelect || !attendanceList || !attendanceEmpty || !giftList || !giftEmpty) return;
+  if (loading) loading.hidden = true;
+
+  populateTopListenerPlatformOptions(platformSelect);
+
+  const availablePeriods = Array.from(periodSelect.options).map(opt => opt.value);
+  if (!availablePeriods.includes(topListenerPeriodFilter)) {
+    topListenerPeriodFilter = periodSelect.value || availablePeriods[0] || "30";
+  }
+  periodSelect.value = topListenerPeriodFilter;
+
+  if (!platformSelect.querySelector(`option[value="${topListenerPlatformFilter}"]`)) {
+    topListenerPlatformFilter = "all";
+  }
+  platformSelect.value = topListenerPlatformFilter;
+
+  topListenerPeriodFilter = periodSelect.value || "30";
+  topListenerPlatformFilter = platformSelect.value || "all";
+
+  ensureTopListenerFilterHandlers(periodSelect, platformSelect);
+
+  const streamEntries = collectTopListenerStreams(topListenerPeriodFilter, topListenerPlatformFilter);
+  renderTopListenerAttendanceRanking(streamEntries, attendanceList, attendanceEmpty);
+  renderTopListenerGiftRanking(streamEntries, giftList, giftEmpty);
+};
+
 // === 共通UI ===
 const getViewTitle = id => {
   switch(id) {
@@ -1079,72 +1359,8 @@ const renderDashboard = () => {
     }
   }
   
-  // リスナーの簡易表示（最大5件、最終参加日時順）
-  const dashboardListenerList = document.getElementById("dashboard-listener-list");
-  const dashboardListenerEmpty = document.getElementById("dashboard-listener-empty");
-  
-  if (dashboardListenerList && dashboardListenerEmpty) {
-    dashboardListenerList.innerHTML = "";
-    const latestAttendanceMap = buildLatestAttendanceMapAll();
-    
-    const compareNameAsc = (a, b) => {
-      const result = nameCollator.compare((a.name || "").trim(), (b.name || "").trim());
-      if (result !== 0) return result;
-      return (a.id || "").localeCompare(b.id || "");
-    };
-    
-    const sorted = [...listeners];
-    sorted.sort((a, b) => {
-      const aTime = latestAttendanceMap.get(a.id);
-      const bTime = latestAttendanceMap.get(b.id);
-      const aValue = typeof aTime === "number" ? aTime : Number.NEGATIVE_INFINITY;
-      const bValue = typeof bTime === "number" ? bTime : Number.NEGATIVE_INFINITY;
-      if (aValue !== bValue) return bValue - aValue;
-      return compareNameAsc(a, b);
-    });
-    
-    const listenerPreview = sorted.slice(0, 3);
-    
-    if (listenerPreview.length === 0) {
-      dashboardListenerEmpty.style.display = "block";
-    } else {
-      dashboardListenerEmpty.style.display = "none";
-      listenerPreview.forEach(listener => {
-        const li = document.createElement("li");
-        const header = document.createElement("div");
-        header.className = "list-item-header";
-        
-        const titleBlock = document.createElement("div");
-        titleBlock.className = "list-title-block";
-
-        const title = document.createElement("span");
-        title.className = "list-title";
-        title.textContent = listener.name || "(名称未設定)";
-        titleBlock.appendChild(title);
-
-        const statusContainer = document.createElement("div");
-        const hasStatusContent = populateStatusContainer(statusContainer, getActiveStatusEntries(listener), {
-          showEmpty: true,
-          size: "compact"
-        });
-        if (hasStatusContent) titleBlock.appendChild(statusContainer);
-
-        header.appendChild(titleBlock);
-        li.appendChild(header);
-
-        const tagsLine = document.createElement("div");
-        tagsLine.className = "list-sub";
-        const tagsText = Array.isArray(listener.tags) && listener.tags.length ? listener.tags.join(", ") : "タグなし";
-        tagsLine.textContent = tagsText;
-        li.appendChild(tagsLine);
-
-        li.onclick = () => openListener(listener.id);
-        dashboardListenerList.appendChild(li);
-      });
-    }
-  }
-
   // 登録者数の推移グラフを描画
+  renderTopListenerSection();
   renderFollowerCharts(profiles);
 };
 
@@ -3140,7 +3356,6 @@ document.getElementById("back-to-dashboard-from-listener").onclick = () => { sav
 
 // 「すべて見る」ボタン
 document.getElementById("dashboard-view-all-platforms").onclick = () => switchToTab('platform');
-document.getElementById("dashboard-view-all-listeners").onclick = () => switchToTab('listener');
 document.getElementById("listener-edit").onclick = () => {
   if (!currentListener) return;
   const urlsValue = Array.isArray(currentListener.urls) ? currentListener.urls.join("\n") : "";
@@ -3328,18 +3543,31 @@ const requestOpenStatusManagement = () => {
   return true;
 };
 
+function applyNormalizedPayload(rawPayload, { persist = true, suppressAutoBackup = false } = {}) {
+  const normalized = normalizeData(rawPayload);
+  profiles = normalized.profiles;
+  listeners = normalized.listeners;
+  statusCatalog = Array.isArray(normalized.statusCatalog) ? normalized.statusCatalog : [];
+  schemaVersion = Number.isFinite(normalized.schemaVersion) ? normalized.schemaVersion : CURRENT_SCHEMA_VERSION;
+  giftTemplates = Array.isArray(normalized.giftTemplates) ? normalized.giftTemplates : createDefaultGiftTemplates();
+  currentProfile = null;
+  currentStream = null;
+  currentListener = null;
+  renderStatusList();
+  if (persist) {
+    if (suppressAutoBackup) autoBackupSilenceNextDirty = true;
+    saveAppData();
+  }
+  renderDashboard();
+  showView("dashboard-view");
+}
+
 const menu=document.getElementById("menu"), menuBtn=document.getElementById("menu-button");
 menuBtn.onclick=()=>{menu.style.display=menu.style.display==="block"?"none":"block";};
 document.body.onclick=e=>{if(!menu.contains(e.target)&&e.target!==menuBtn)menu.style.display="none";};
 
 document.getElementById("export-btn").onclick=()=>{
-  const payload={
-    schemaVersion: CURRENT_SCHEMA_VERSION,
-    profiles,
-    listeners,
-    statusCatalog,
-    giftTemplates
-  };
+  const payload={...currentPayload(),schemaVersion:CURRENT_SCHEMA_VERSION};
   const blob=new Blob([JSON.stringify(payload,null,2)],{type:"application/json"});
   const a=document.createElement("a");
   a.href=URL.createObjectURL(blob);
@@ -3361,19 +3589,7 @@ document.getElementById("import-btn").onclick=()=>{
           return;
         }
         const parsed=JSON.parse(reader.result);
-        const normalized=normalizeData(parsed);
-        profiles=normalized.profiles;
-        listeners=normalized.listeners;
-    statusCatalog=Array.isArray(normalized.statusCatalog)?normalized.statusCatalog:[];
-    schemaVersion=Number.isFinite(normalized.schemaVersion)?normalized.schemaVersion:CURRENT_SCHEMA_VERSION;
-    giftTemplates=normalized.giftTemplates;
-        currentProfile=null;
-        currentStream=null;
-        currentListener=null;
-    renderStatusList();
-        saveAppData();
-        renderDashboard();
-        showView("dashboard-view");
+        applyNormalizedPayload(parsed);
         alert("インポート完了");
       }catch(err){
         console.error(err);
@@ -3388,18 +3604,7 @@ document.getElementById("import-btn").onclick=()=>{
 document.getElementById("reset-btn").onclick=()=>{
   if(!confirm("保存されているデータをすべて削除し、初期状態に戻します。よろしいですか？")) return;
   const defaults=createDefaultData();
-  profiles=defaults.profiles;
-  listeners=defaults.listeners;
-  statusCatalog=defaults.statusCatalog;
-  giftTemplates=defaults.giftTemplates;
-  schemaVersion=defaults.schemaVersion;
-  currentProfile=null;
-  currentStream=null;
-  currentListener=null;
-  renderStatusList();
-  saveAppData();
-  renderDashboard();
-  showView("dashboard-view");
+  applyNormalizedPayload(defaults);
   menu.style.display="none";
   alert("データを初期化しました");
 };
@@ -3424,6 +3629,7 @@ openDB().then(async()=>{
   renderDashboard();
   initTabNavigation();
   initLocalTabs();
+  await initAutoBackup();
 
   // --- グラフ機能用イベントリスナー ---
 
@@ -3461,6 +3667,10 @@ openDB().then(async()=>{
       localStorage.setItem('heroCollapsed', collapsed);
     });
   }
+
+  initDashboardCollapsibles();
+  initAutoBackupCardCollapsible();
+  initFooterSafeSpace();
 
   // 初回データロード後の描画処理（遅延実行）
   setTimeout(() => renderFollowerCharts(profiles), 100);
@@ -3500,6 +3710,94 @@ function initLocalTabs() {
       renderStreams();
     });
   }
+}
+
+function initDashboardCollapsibles() {
+  const sections = document.querySelectorAll('.home-section[data-collapsible-id]');
+  sections.forEach(section => {
+    const toggleBtn = section.querySelector('.section-toggle');
+    const content = section.querySelector('.home-section-content');
+    if (!toggleBtn || !content) {
+      return;
+    }
+    const storageKey = `bondlog:dashboard:section:${section.dataset.collapsibleId}`;
+    const savedState = localStorage.getItem(storageKey);
+    const startCollapsed = savedState === 'true';
+    setCollapsibleState(section, content, toggleBtn, startCollapsed);
+    toggleBtn.addEventListener('click', () => {
+      const nextCollapsed = !section.classList.contains('collapsed');
+      setCollapsibleState(section, content, toggleBtn, nextCollapsed);
+      localStorage.setItem(storageKey, String(nextCollapsed));
+    });
+  });
+}
+
+function initAutoBackupCardCollapsible() {
+  const card = document.getElementById('auto-backup-card');
+  if (!card) {
+    return;
+  }
+  const toggleBtn = card.querySelector('.auto-backup-toggle');
+  const content = card.querySelector('.auto-backup-card__body');
+  if (!toggleBtn || !content) {
+    return;
+  }
+  const storageKey = 'bondlog:auto-backup-card:collapsed';
+  const savedState = localStorage.getItem(storageKey);
+  const startCollapsed = savedState === 'true';
+  const applyState = (collapsed) => {
+    setCollapsibleState(card, content, toggleBtn, collapsed);
+    content.style.display = collapsed ? 'none' : '';
+  };
+  applyState(startCollapsed);
+  toggleBtn.addEventListener('click', () => {
+    const nextCollapsed = !card.classList.contains('collapsed');
+    applyState(nextCollapsed);
+    localStorage.setItem(storageKey, String(nextCollapsed));
+  });
+}
+
+// フッターの高さに応じてメイン領域の余白を確保する
+function initFooterSafeSpace() {
+  const footer = document.querySelector('footer');
+  const root = document.documentElement;
+  if (!footer || !root) {
+    return;
+  }
+
+  const recomputeSafeSpace = () => {
+    const footerRect = footer.getBoundingClientRect();
+    const footerHeight = Number.isFinite(footerRect?.height) ? footerRect.height : 0;
+    const safeSpacePx = Math.ceil(footerHeight + 24);
+    root.style.setProperty('--footer-safe-space', `${safeSpacePx}px`);
+  };
+
+  recomputeSafeSpace();
+
+  if (!footerSafeSpaceResizeBound) {
+    window.addEventListener('resize', recomputeSafeSpace);
+    footerSafeSpaceResizeBound = true;
+  }
+
+  if (typeof ResizeObserver === 'function') {
+    if (footerSafeSpaceObserver) {
+      footerSafeSpaceObserver.disconnect();
+    }
+    footerSafeSpaceObserver = new ResizeObserver(() => recomputeSafeSpace());
+    footerSafeSpaceObserver.observe(footer);
+  }
+
+  footer.querySelectorAll('details').forEach(detail => {
+    if (detail.dataset.footerSafeSpaceBound === 'true') return;
+    detail.addEventListener('toggle', recomputeSafeSpace);
+    detail.dataset.footerSafeSpaceBound = 'true';
+  });
+}
+
+function setCollapsibleState(section, content, toggleBtn, isCollapsed) {
+  section.classList.toggle('collapsed', isCollapsed);
+  content.hidden = isCollapsed;
+  toggleBtn.setAttribute('aria-expanded', String(!isCollapsed));
 }
 
 function switchLocalTab(target) {
@@ -3732,3 +4030,292 @@ const initializeListenerStatusFilter = () => {
     tagSearchInput.setAttribute('data-listener-attached', 'true');
   }
 };
+
+async function initAutoBackup() {
+  if (!autoBackupElements.button || !autoBackupElements.status) return;
+  if (!autoBackup.supported) {
+    autoBackupElements.button.disabled = true;
+    autoBackupElements.button.title = "このブラウザは File System Access API に対応していません";
+    setAutoBackupStatus("このブラウザでは自動バックアップを利用できません", true);
+    return;
+  }
+  if (!autoBackupElements.button.dataset.autoBackupBound) {
+    autoBackupElements.button.addEventListener("click", onAutoBackupConfigure);
+    autoBackupElements.button.dataset.autoBackupBound = "true";
+  }
+  try {
+    const storedHandle = await handleStore.get(AUTO_BACKUP_HANDLE_KEY);
+    if (storedHandle) {
+      autoBackup.dirHandle = storedHandle;
+      autoBackup.lastHash = await readExistingAutoBackupHash(storedHandle);
+      setAutoBackupStatus("復元済み");
+      ensureAutoBackupTimer();
+      await tryLoadFromAutoBackup();
+    } else {
+      setAutoBackupStatus("未設定");
+    }
+  } catch (err) {
+    console.warn("Auto backup init failed", err);
+    setAutoBackupStatus(`初期化に失敗: ${err?.message || err}`, true);
+  }
+}
+
+function setAutoBackupStatus(message, isError = false) {
+  if (!autoBackupElements.status) return;
+  autoBackupElements.status.textContent = message;
+  autoBackupElements.status.classList.toggle("auto-backup-status--error", Boolean(isError));
+}
+
+function markAutoBackupDirty() {
+  if (autoBackupSilenceNextDirty) {
+    autoBackupSilenceNextDirty = false;
+    return;
+  }
+  if (!autoBackup.supported) return;
+  autoBackup.hasChanges = true;
+  triggerAutoBackupSoon();
+}
+
+function triggerAutoBackupSoon(forceImmediate = false) {
+  if (!autoBackup.supported || !autoBackup.dirHandle) return;
+  ensureAutoBackupTimer();
+  if (forceImmediate) {
+    runAutoBackup(true);
+    return;
+  }
+  if (autoBackupSoonTimer) return;
+  autoBackupSoonTimer = setTimeout(() => {
+    autoBackupSoonTimer = null;
+    runAutoBackup();
+  }, 1500);
+}
+
+function ensureAutoBackupTimer() {
+  if (autoBackup.timerId || !autoBackup.dirHandle) return;
+  autoBackup.timerId = setInterval(() => runAutoBackup(), AUTO_BACKUP_INTERVAL_MS);
+}
+
+function stopAutoBackupTimer() {
+  if (autoBackup.timerId) {
+    clearInterval(autoBackup.timerId);
+    autoBackup.timerId = null;
+  }
+}
+
+async function onAutoBackupConfigure(event) {
+  event.preventDefault();
+  if (!autoBackup.supported || !autoBackupElements.button) return;
+  if (event.shiftKey) {
+    await handleStore.del(AUTO_BACKUP_HANDLE_KEY);
+    autoBackup.dirHandle = null;
+    autoBackup.lastHash = null;
+    autoBackup.hasChanges = true;
+    stopAutoBackupTimer();
+    setAutoBackupStatus("解除済み");
+    return;
+  }
+  if (autoBackup.dirHandle) {
+    setAutoBackupStatus("既に設定済み");
+    triggerAutoBackupSoon();
+    return;
+  }
+  try {
+    const dirHandle = await window.showDirectoryPicker({ mode: "readwrite" });
+    autoBackup.dirHandle = dirHandle;
+    autoBackup.lastHash = await readExistingAutoBackupHash(dirHandle);
+    await handleStore.set(AUTO_BACKUP_HANDLE_KEY, dirHandle);
+    autoBackup.hasChanges = true;
+    setAutoBackupStatus("設定完了");
+    ensureAutoBackupTimer();
+    triggerAutoBackupSoon(true);
+  } catch (err) {
+    if (err?.name === "AbortError") return;
+    console.error("Auto backup configuration failed", err);
+    setAutoBackupStatus(`設定に失敗: ${err?.message || err}`, true);
+  }
+}
+
+async function runAutoBackup(force = false) {
+  if (!autoBackup.dirHandle || autoBackup.isRunning) return;
+  const granted = await ensureAutoBackupPermission(autoBackup.dirHandle);
+  if (!granted) {
+    setAutoBackupStatus("バックアップ先の権限がありません", true);
+    stopAutoBackupTimer();
+    return;
+  }
+  if (!autoBackup.hasChanges && !force) {
+    setAutoBackupStatus(`変更なし (${formatAutoBackupClock(new Date())})`);
+    return;
+  }
+  autoBackup.isRunning = true;
+  try {
+    const payload = { ...currentPayload(), schemaVersion: CURRENT_SCHEMA_VERSION };
+    const jsonText = JSON.stringify(payload, null, 2);
+    const currentHash = await sha256Hex(jsonText);
+    if (currentHash === autoBackup.lastHash && !force) {
+      autoBackup.hasChanges = false;
+      setAutoBackupStatus(`変更なし (${formatAutoBackupClock(new Date())})`);
+      return;
+    }
+    const now = new Date();
+    const archiveName = await resolveArchiveName(autoBackup.dirHandle, `backup-${formatAutoBackupTimestamp(now)}.json`);
+    await writeFileToHandle(autoBackup.dirHandle, "auto-backup.json", jsonText);
+    await writeFileToHandle(autoBackup.dirHandle, archiveName, jsonText);
+    autoBackup.lastHash = currentHash;
+    autoBackup.hasChanges = false;
+    setAutoBackupStatus(`${archiveName} を保存（${formatAutoBackupClock(now)}）`);
+  } catch (err) {
+    console.error("Auto backup failed", err);
+    setAutoBackupStatus(`バックアップ失敗: ${err?.message || err}`, true);
+  } finally {
+    autoBackup.isRunning = false;
+  }
+}
+
+async function ensureAutoBackupPermission(handle) {
+  if (!handle?.queryPermission) return false;
+  const opts = { mode: "readwrite" };
+  let permission = await handle.queryPermission(opts);
+  if (permission === "granted") return true;
+  if (permission === "denied") return false;
+  permission = await handle.requestPermission(opts);
+  return permission === "granted";
+}
+
+async function readExistingAutoBackupHash(dirHandle) {
+  try {
+    const fileHandle = await dirHandle.getFileHandle("auto-backup.json");
+    const file = await fileHandle.getFile();
+    const text = await file.text();
+    return await sha256Hex(text);
+  } catch (err) {
+    return null;
+  }
+}
+
+async function writeFileToHandle(dirHandle, name, contents) {
+  const fileHandle = await dirHandle.getFileHandle(name, { create: true });
+  const writable = await fileHandle.createWritable();
+  await writable.write(contents);
+  await writable.close();
+}
+
+async function fileExists(dirHandle, name) {
+  try {
+    await dirHandle.getFileHandle(name);
+    return true;
+  } catch (err) {
+    return false;
+  }
+}
+
+async function resolveArchiveName(dirHandle, baseName) {
+  if (!(await fileExists(dirHandle, baseName))) return baseName;
+  const dotIndex = baseName.lastIndexOf(".");
+  const stem = dotIndex >= 0 ? baseName.slice(0, dotIndex) : baseName;
+  const ext = dotIndex >= 0 ? baseName.slice(dotIndex) : "";
+  for (let i = 2; i < 50; i += 1) {
+    const candidate = `${stem}-${i}${ext}`;
+    if (!(await fileExists(dirHandle, candidate))) return candidate;
+  }
+  return `${stem}-${Date.now()}${ext}`;
+}
+
+async function sha256Hex(text) {
+  if (!(crypto?.subtle)) throw new Error("Crypto API が利用できません");
+  const data = new TextEncoder().encode(text);
+  const digest = await crypto.subtle.digest("SHA-256", data);
+  const bytes = new Uint8Array(digest);
+  return Array.from(bytes, b => b.toString(16).padStart(2, "0")).join("");
+}
+
+async function tryLoadFromAutoBackup() {
+  if (!autoBackup.dirHandle) return false;
+  try {
+    const fileHandle = await autoBackup.dirHandle.getFileHandle("auto-backup.json");
+    const file = await fileHandle.getFile();
+    const jsonText = await file.text();
+    const payload = JSON.parse(jsonText);
+    applyNormalizedPayload(payload, { suppressAutoBackup: true });
+    autoBackup.lastHash = await sha256Hex(jsonText);
+    autoBackup.hasChanges = false;
+    setAutoBackupStatus("自動読込完了");
+    return true;
+  } catch (err) {
+    console.warn("Auto backup load failed", err);
+    setAutoBackupStatus("自動読込に失敗しました", true);
+    return false;
+  }
+}
+
+function formatAutoBackupTimestamp(date) {
+  const pad = value => String(value).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}-${pad(date.getHours())}-${pad(date.getMinutes())}`;
+}
+
+function formatAutoBackupClock(date) {
+  const pad = value => String(value).padStart(2, "0");
+  return `${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+function createHandleStore() {
+  if (typeof indexedDB === "undefined") {
+    return {
+      get: async () => null,
+      set: async () => {},
+      del: async () => {}
+    };
+  }
+  const DB_NAME = "bondlog-settings";
+  const STORE = "kv";
+  let dbPromise = null;
+
+  function open() {
+    if (dbPromise) return dbPromise;
+    dbPromise = new Promise((resolve, reject) => {
+      const request = indexedDB.open(DB_NAME, 1);
+      request.onupgradeneeded = event => {
+        const database = event.target.result;
+        if (!database.objectStoreNames.contains(STORE)) database.createObjectStore(STORE);
+      };
+      request.onsuccess = event => resolve(event.target.result);
+      request.onerror = event => reject(event.target.error);
+    });
+    return dbPromise;
+  }
+
+  async function get(key) {
+    const database = await open();
+    return new Promise((resolve, reject) => {
+      const tx = database.transaction(STORE, "readonly");
+      const store = tx.objectStore(STORE);
+      const request = store.get(key);
+      request.onsuccess = e => resolve(e.target.result);
+      request.onerror = e => reject(e.target.error);
+    });
+  }
+
+  async function set(key, value) {
+    const database = await open();
+    return new Promise((resolve, reject) => {
+      const tx = database.transaction(STORE, "readwrite");
+      const store = tx.objectStore(STORE);
+      const request = store.put(value, key);
+      request.onsuccess = () => resolve();
+      request.onerror = e => reject(e.target.error);
+    });
+  }
+
+  async function del(key) {
+    const database = await open();
+    return new Promise((resolve, reject) => {
+      const tx = database.transaction(STORE, "readwrite");
+      const store = tx.objectStore(STORE);
+      const request = store.delete(key);
+      request.onsuccess = () => resolve();
+      request.onerror = e => reject(e.target.error);
+    });
+  }
+
+  return { get, set, del };
+}

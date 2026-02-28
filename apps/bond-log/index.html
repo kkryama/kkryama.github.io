@@ -61,7 +61,7 @@
     <section id="dashboard-view" class="view active">
       <section class="home-hero" aria-label="BondLogの概要">
         <div class="home-hero-header">
-          <h3>BondLogについて</h3>
+          <h3>BondLogについて <span class="hero-toggle-hint">（右のボタンで開閉できます）</span></h3>
           <button id="toggle-hero" class="toggle-btn" aria-label="概要セクションを開閉"></button>
         </div>
         <div class="home-hero-content">
@@ -71,7 +71,12 @@
             <strong>プライバシー保護:</strong>
             サーバーにデータを送信せず、すべてお使いの端末内にのみ保存されます。<br>
             ※ 公共の端末(ネットカフェなど)でのご利用にはご注意ください。<br>
-            <strong class="warning-text">サーバにデータは保存されないので必ず「エクスポート」でデータをバックアップしてください</strong>
+            <strong class="warning-text" data-build-variant="backup-warning">サーバにデータは保存されないので、必ず「💾 エクスポート」で定期的にバックアップしてください。</strong>
+          </p>
+          <p class="local-app-note" data-build-variant="bondlog-link">
+            ローカルで端末内のみで運用したい場合は、
+            <a href="BondLog.zip" download>BondLog.zip</a>
+            をダウンロードして展開し、中にある <code>BondLog.html</code> を開いてください。Chrome で動作確認済みの自動バックアップ機能を使いつつ、必要に応じて「💾 エクスポート」で手動バックアップも行えます。
           </p>
           <p>
             <strong>初めての方へ:</strong>
@@ -92,27 +97,79 @@
         </div>
       </section>
 
-      <section class="home-section" id="home-profiles">
+      <section class="home-section collapsible-section" id="home-profiles" data-collapsible-id="platforms">
         <div class="home-section-header">
-          <h2 class="home-section-title">プラットフォーム</h2>
+          <div class="home-section-header-main">
+            <h2 class="home-section-title">プラットフォーム</h2>
+            <button class="toggle-btn section-toggle" type="button" aria-expanded="true" aria-controls="home-profiles-content" aria-label="プラットフォームセクションの表示を切り替え"></button>
+          </div>
           <button class="secondary" id="dashboard-view-all-platforms">すべて見る</button>
         </div>
-        <p id="dashboard-profile-empty" class="empty-state">まだプラットフォームが登録されていません</p>
-        <ul class="list" id="dashboard-profile-list"></ul>
-      </section>
-
-      <section class="home-section" id="home-listeners">
-        <div class="home-section-header">
-          <h2 class="home-section-title">リスナー</h2>
-          <button class="secondary" id="dashboard-view-all-listeners">すべて見る</button>
+        <div class="home-section-content" id="home-profiles-content">
+          <p id="dashboard-profile-empty" class="empty-state">まだプラットフォームが登録されていません</p>
+          <ul class="list" id="dashboard-profile-list"></ul>
         </div>
-        <p id="dashboard-listener-empty" class="empty-state">まだリスナーが登録されていません</p>
-        <ul class="list" id="dashboard-listener-list"></ul>
       </section>
 
-      <section class="home-section" id="home-follower-charts">
+      <section class="home-section collapsible-section" id="home-top-listeners" aria-label="トップリスナー集計" data-collapsible-id="topListeners">
         <div class="home-section-header">
-          <h2 class="home-section-title">登録者数の推移</h2>
+          <div class="home-section-header-main">
+            <h2 class="home-section-title">トップリスナー</h2>
+            <button class="toggle-btn section-toggle" type="button" aria-expanded="true" aria-controls="home-top-listeners-content" aria-label="トップリスナーセクションの表示を切り替え"></button>
+          </div>
+        </div>
+        <div class="home-section-content" id="home-top-listeners-content">
+          <p class="home-section-description">
+            期間とプラットフォームを指定して、参加率とギフト額の上位リスナーを確認できます。
+          </p>
+          <div class="top-listener-filters" aria-label="トップリスナーフィルター">
+            <div class="filter-field">
+              <label for="top-listener-filter-period">期間</label>
+              <select id="top-listener-filter-period">
+                <option value="30">直近30日</option>
+                <option value="90">直近90日</option>
+                <option value="180">直近180日</option>
+                <option value="all">全期間</option>
+              </select>
+            </div>
+            <div class="filter-field">
+              <label for="top-listener-filter-platform">対象プラットフォーム</label>
+              <select id="top-listener-filter-platform">
+                <option value="all">すべてのプラットフォーム</option>
+              </select>
+            </div>
+          </div>
+
+          <div id="top-listener-loading" class="top-listener-loading" aria-live="polite" hidden>集計中です...</div>
+
+          <div class="top-listener-panels">
+            <section class="top-listener-panel top-listener-panel--attendance" aria-label="トップ参加リスナー">
+              <div class="top-listener-panel-header">
+                <h3>トップ参加リスナー</h3>
+                <p>期間内の参加数と参加率で上位5名を表示します。</p>
+              </div>
+              <p id="top-listener-attendance-empty" class="empty-state">まだ参加履歴がありません</p>
+              <ul id="top-listener-attendance-list" class="top-listener-list list" aria-live="polite"></ul>
+            </section>
+
+            <section class="top-listener-panel top-listener-panel--gift" aria-label="トップギフトリスナー">
+              <div class="top-listener-panel-header">
+                <h3>トップギフトリスナー</h3>
+                <p>数値化できたギフト額の合計で上位5名を表示します。</p>
+              </div>
+              <p id="top-listener-gift-empty" class="empty-state">まだギフト履歴がありません</p>
+              <ul id="top-listener-gift-list" class="top-listener-list list" aria-live="polite"></ul>
+            </section>
+          </div>
+        </div>
+      </section>
+
+      <section class="home-section collapsible-section" id="home-follower-charts" data-collapsible-id="followerCharts">
+        <div class="home-section-header">
+          <div class="home-section-header-main">
+            <h2 class="home-section-title">登録者数の推移</h2>
+            <button class="toggle-btn section-toggle" type="button" aria-expanded="true" aria-controls="home-follower-charts-content" aria-label="登録者数の推移セクションの表示を切り替え"></button>
+          </div>
           <div class="chart-controls">
             <label for="chart-duration-filter" style="font-size: 0.9rem; margin-right: 0.5rem;">期間:</label>
             <select id="chart-duration-filter" style="padding: 0.2rem;">
@@ -125,8 +182,10 @@
           </div>
         </div>
 
-        <div id="dashboard-follower-charts-container">
-          <p id="follower-charts-empty" class="empty-state">まだ登録者履歴を持つプラットフォームがありません</p>
+        <div class="home-section-content" id="home-follower-charts-content">
+          <div id="dashboard-follower-charts-container">
+            <p id="follower-charts-empty" class="empty-state">まだ登録者履歴を持つプラットフォームがありません</p>
+          </div>
         </div>
       </section>
     </section>
@@ -375,14 +434,43 @@
   <script src="app.js"></script>
 
   <footer>
-  <div>
-    このサイトは <strong>GitHub Copilot</strong> を活用して作成されています。<br>
-    ご質問・ご連絡は
-    <a href="https://x.com/_yama_P_" target="_blank" style="color:#1da1f2;">
-      @_yama_P_
-    </a>
-    までお願いいたします。
-  </div>
-</footer>
+    <div class="footer-licenses" aria-live="polite">
+      <details>
+        <summary>ライセンス情報（クリックで開閉）</summary>
+        <div>
+          <p>
+            BondLog は以下のオープンソースライブラリを使用しています：
+          </p>
+          <ul>
+            <li>
+              <strong>Chart.js</strong> — Copyright (c) 2013-2023 Chart.js Contributors. MIT License.
+            </li>
+            <li>
+              <strong>chartjs-adapter-date-fns</strong> — Copyright (c) 2023 Chart.js Contributors.
+              MIT License.
+            </li>
+          </ul>
+          <p>
+            ライセンス本文:
+            <a href="https://github.com/chartjs/Chart.js/blob/master/LICENSE.md" target="_blank" rel="noopener noreferrer">
+              Chart.js License
+            </a>
+            /
+            <a href="https://github.com/chartjs/chartjs-adapter-date-fns/blob/master/LICENSE.md" target="_blank" rel="noopener noreferrer">
+              chartjs-adapter-date-fns License
+            </a>
+          </p>
+        </div>
+      </details>
+    </div>
+    <div class="footer-text">
+      このサイトは <strong>GitHub Copilot</strong> を活用して作成されています。<br>
+      ご質問・ご連絡は
+      <a href="https://x.com/_yama_P_" target="_blank" rel="noopener noreferrer">
+        @_yama_P_
+      </a>
+      までお願いいたします。
+    </div>
+  </footer>
 </body>
 </html>
