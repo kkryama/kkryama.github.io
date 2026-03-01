@@ -210,9 +210,21 @@ echo ""
 echo "--- BondLog.zip の生成 ---"
 if [ -f "$DEST_DIR/BondLog.html" ]; then
   rm -f "$DEST_DIR/BondLog.zip"
-  (cd "$DEST_DIR" && zip -q BondLog.zip BondLog.html)
+  # BondLog.html に加えてリンク先のファイルもまとめて ZIP 化
+  ZIP_FILES=(
+    "BondLog.html"
+    "UserGuide.html"
+    "Glossary.html"
+    "sample-data.json"
+  )
+  # use-cases/ 内の HTML も含める
+  ZIP_EXTRA_ARGS=()
+  if [ -d "$DEST_DIR/use-cases" ]; then
+    ZIP_EXTRA_ARGS+=("use-cases/")
+  fi
+  (cd "$DEST_DIR" && zip -q -r BondLog.zip "${ZIP_FILES[@]}" "${ZIP_EXTRA_ARGS[@]}")
   if [ $? -eq 0 ]; then
-    echo -e "${GREEN}✓${NC} BondLog.zip を生成しました"
+    echo -e "${GREEN}✓${NC} BondLog.zip を生成しました（UserGuide.html, Glossary.html, sample-data.json, use-cases/ を含む）"
     SUCCESS_COUNT=$((SUCCESS_COUNT + 1))
     # BondLog.html はデプロイ先では ZIP に含まれているため削除
     rm -f "$DEST_DIR/BondLog.html"
