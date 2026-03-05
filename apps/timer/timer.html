@@ -32,9 +32,9 @@
         stroke: rgba(255,255,255,0.2);
       }
       .progress {
-        stroke: #00d9ff;
+        stroke: #ffd700;
         stroke-linecap: round;
-        filter: drop-shadow(0 0 10px #00d9ff);
+        filter: drop-shadow(0 0 10px #ffd700);
       }
       #time {
         position: absolute;
@@ -45,8 +45,8 @@
         line-height: 1;
         margin: 0;
         text-shadow:
-          0 0 10px #00d9ff,
-          0 0 20px #00d9ff;
+          0 0 10px #ffd700,
+          0 0 20px #ffd700;
       }
       .inputs {
         margin-top: 20px;
@@ -59,10 +59,10 @@
         margin: 5px;
         text-align: center;
         background: rgba(0,0,0,0.6);
-        border: 2px solid #00d9ff;
+        border: 2px solid #ffd700;
         border-radius: 8px;
         color: white;
-        box-shadow: 0 0 5px #00d9ff;
+        box-shadow: 0 0 5px #ffd700;
       }
       button {
         font-size: 18px;
@@ -71,13 +71,13 @@
         width: 110px;
         border: none;
         border-radius: 8px;
-        background: #00d9ff;
+        background: #ffd700;
         color: black;
         font-weight: bold;
         cursor: pointer;
       }
       button:hover {
-        background: #5eeaff;
+        background: #ffe566;
       }
     </style>
   </head>
@@ -97,7 +97,7 @@
         <button onclick="stopTimer()">STOP</button>
         <button onclick="resetTimer()">RESET</button>
       </div>
-      <div id="inputMsg" style="text-align:center; margin-top:8px; font-size:13px; color:#00d9ff; text-shadow:0 0 6px #00d9ff; min-height:1.4em;"></div>
+      <div id="inputMsg" style="text-align:center; margin-top:8px; font-size:13px; color:#ffd700; text-shadow:0 0 6px #ffd700; min-height:1.4em;"></div>
     </div>
     <script>
       let totalTime = 0;
@@ -116,7 +116,7 @@
         document.getElementById("min").disabled = disabled;
         document.getElementById("sec").disabled = disabled;
         document.getElementById("inputMsg").textContent = disabled
-          ? "タイマー動作中は変更できません。変更するには RESET してください。"
+          ? "時間を変更するときは RESET してください。"
           : "";
       }
       function setStartButton(label) {
