@@ -4,7 +4,7 @@
 # ソースリポジトリから必要なファイルをこのディレクトリに複製します
 
 # ソースディレクトリ（必要に応じて調整してください）
-SOURCE_DIR="/home/com/ubuntu_dir/develop/github/timer"
+SOURCE_DIR="/home/com/ubuntu_dir/develop/nongit/timer"
 
 # 現在のスクリプトがあるディレクトリ（デプロイ先）
 DEST_DIR="$(cd "$(dirname "$0")" && pwd)"
