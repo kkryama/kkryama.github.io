@@ -1,0 +1,180 @@
+
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <style>
+      body {
+        margin: 0;
+        background: transparent;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        height: 100vh;
+        font-family: Arial;
+        color: white;
+      }
+      .container {
+        position: relative;
+        width: 300px;
+        height: 300px;
+      }
+      svg {
+        width: 300px;
+        height: 300px;
+        transform: rotate(-90deg);
+      }
+      circle {
+        fill: none;
+        stroke-width: 12;
+      }
+      .bg {
+        stroke: rgba(255,255,255,0.2);
+      }
+      .progress {
+        stroke: #00d9ff;
+        stroke-linecap: round;
+        filter: drop-shadow(0 0 10px #00d9ff);
+      }
+      #time {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        font-size: 60px;
+        line-height: 1;
+        margin: 0;
+        text-shadow:
+          0 0 10px #00d9ff,
+          0 0 20px #00d9ff;
+      }
+      .inputs {
+        margin-top: 20px;
+        text-align: center;
+      }
+      input {
+        width: 70px;
+        font-size: 22px;
+        padding: 8px;
+        margin: 5px;
+        text-align: center;
+        background: rgba(0,0,0,0.6);
+        border: 2px solid #00d9ff;
+        border-radius: 8px;
+        color: white;
+        box-shadow: 0 0 5px #00d9ff;
+      }
+      button {
+        font-size: 18px;
+        padding: 8px 0;
+        margin: 5px;
+        width: 110px;
+        border: none;
+        border-radius: 8px;
+        background: #00d9ff;
+        color: black;
+        font-weight: bold;
+        cursor: pointer;
+      }
+      button:hover {
+        background: #5eeaff;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <svg viewBox="0 0 300 300">
+        <circle class="bg" cx="150" cy="150" r="120"/>
+        <circle class="progress" cx="150" cy="150" r="120" stroke-dasharray="754" stroke-dashoffset="0"/>
+      </svg>
+      <div id="time">00:00</div>
+      <div class="inputs">
+        <input id="min" type="number" placeholder="分"> :
+        <input id="sec" type="number" placeholder="秒">
+      </div>
+      <div style="text-align:center; margin-top:10px;">
+        <button id="startBtn" onclick="startTimer()">START</button>
+        <button onclick="stopTimer()">STOP</button>
+        <button onclick="resetTimer()">RESET</button>
+      </div>
+      <div id="inputMsg" style="text-align:center; margin-top:8px; font-size:13px; color:#00d9ff; text-shadow:0 0 6px #00d9ff; min-height:1.4em;"></div>
+    </div>
+    <script>
+      let totalTime = 0;
+      let remaining = 0;
+      let timer = null;
+      const circle = document.querySelector(".progress");
+      const circumference = 754;
+      function updateDisplay() {
+        let m = Math.floor(remaining / 60);
+        let s = remaining % 60;
+        document.getElementById("time").textContent = String(m).padStart(2, "0") + ":" + String(s).padStart(2, "0");
+        let progress = totalTime ? remaining / totalTime : 0;
+        circle.style.strokeDashoffset = circumference * (1 - progress);
+      }
+      function setInputsDisabled(disabled) {
+        document.getElementById("min").disabled = disabled;
+        document.getElementById("sec").disabled = disabled;
+        document.getElementById("inputMsg").textContent = disabled
+          ? "タイマー動作中は変更できません。変更するには RESET してください。"
+          : "";
+      }
+      function setStartButton(label) {
+        const btn = document.getElementById("startBtn");
+        btn.textContent = label;
+        btn.onclick = label === "START" ? startTimer : continueTimer;
+      }
+      function startTimer() {
+        let m = parseInt(document.getElementById("min").value) || 0;
+        let s = parseInt(document.getElementById("sec").value) || 0;
+        totalTime = m * 60 + s;
+        if (totalTime === 0) return;
+        remaining = totalTime;
+        setInputsDisabled(true);
+        setStartButton("CONTINUE");
+        updateDisplay();
+        timer = setInterval(() => {
+          if (remaining > 0) {
+            remaining--;
+            updateDisplay();
+          } else {
+            clearInterval(timer);
+            timer = null;
+            setInputsDisabled(false);
+            setStartButton("START");
+          }
+        }, 1000);
+      }
+      function continueTimer() {
+        if (timer) return;
+        if (remaining <= 0) return;
+        timer = setInterval(() => {
+          if (remaining > 0) {
+            remaining--;
+            updateDisplay();
+          } else {
+            clearInterval(timer);
+            timer = null;
+            setInputsDisabled(false);
+            setStartButton("START");
+          }
+        }, 1000);
+      }
+      function stopTimer() {
+        clearInterval(timer);
+        timer = null;
+      }
+      function resetTimer() {
+        if (timer) {
+          clearInterval(timer);
+          timer = null;
+        }
+        totalTime = 0;
+        remaining = 0;
+        setInputsDisabled(false);
+        setStartButton("START");
+        updateDisplay();
+      }
+    </script>
+  </body>
+</html>
