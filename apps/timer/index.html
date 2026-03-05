@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>タイマー — 注意事項</title>
+    <style>
+      :root {
+        --accent: #b08800;
+        --bg: #f6f8fa;
+        --card-bg: #ffffff;
+        --border: #d0d7de;
+        --text: #1f2328;
+        --text-muted: #656d76;
+      }
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+      body {
+        background: var(--bg);
+        color: var(--text);
+        font-family: 'Segoe UI', Arial, sans-serif;
+        line-height: 1.7;
+        padding: 40px 20px;
+      }
+      .wrapper {
+        max-width: 720px;
+        margin: 0 auto;
+      }
+      h1 {
+        font-size: 28px;
+        color: var(--accent);
+        margin-bottom: 8px;
+      }
+      h1 a {
+        color: inherit;
+        text-decoration: none;
+      }
+      h1 a:hover {
+        text-decoration: underline;
+      }
+      .subtitle {
+        color: var(--text-muted);
+        font-size: 14px;
+        margin-bottom: 32px;
+      }
+      h2 {
+        font-size: 20px;
+        color: #1f2328;
+        margin: 32px 0 12px;
+        padding-bottom: 6px;
+        border-bottom: 1px solid var(--border);
+      }
+      .card {
+        background: var(--card-bg);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 20px 24px;
+        margin-bottom: 16px;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+      }
+      .card.warning {
+        border-left: 4px solid #d1242f;
+      }
+      .card.info {
+        border-left: 4px solid #0969da;
+      }
+      .card.download {
+        border-left: 4px solid #1a7f37;
+      }
+      .card-title {
+        font-weight: bold;
+        font-size: 15px;
+        margin-bottom: 8px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .card.warning .card-title { color: #d1242f; }
+      .card.info .card-title    { color: #0969da; }
+      .card.download .card-title { color: #1a7f37; }
+      .card p, .card li {
+        font-size: 14px;
+        color: var(--text-muted);
+      }
+      .card ul {
+        padding-left: 20px;
+        margin-top: 6px;
+      }
+      .card li {
+        margin-bottom: 4px;
+      }
+      code {
+        background: rgba(0,0,0,0.06);
+        padding: 2px 6px;
+        border-radius: 4px;
+        font-size: 13px;
+        color: #1f2328;
+        border: 1px solid var(--border);
+      }
+      a {
+        color: #0969da;
+        text-decoration: none;
+      }
+      a:hover {
+        text-decoration: underline;
+      }
+      .btn-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        margin-top: 20px;
+        align-items: center;
+      }
+      .launch-btn {
+        display: inline-block;
+        padding: 12px 32px;
+        background: #b08800;
+        color: #fff;
+        font-size: 16px;
+        font-weight: bold;
+        border-radius: 8px;
+        text-decoration: none;
+        transition: background 0.2s;
+      }
+      .launch-btn:hover {
+        background: #8a6a00;
+        text-decoration: none;
+      }
+      .download-btn {
+        display: inline-block;
+        padding: 12px 28px;
+        background: #1a7f37;
+        color: #fff;
+        font-size: 15px;
+        font-weight: bold;
+        border-radius: 8px;
+        text-decoration: none;
+        transition: background 0.2s;
+      }
+      .download-btn:hover {
+        background: #145f2a;
+        text-decoration: none;
+      }
+      .file-tree {
+        font-family: 'Courier New', monospace;
+        font-size: 13px;
+        color: var(--text-muted);
+        line-height: 1.8;
+      }
+      footer {
+        margin-top: 48px;
+        text-align: center;
+        font-size: 12px;
+        color: var(--text-muted);
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrapper">
+
+      <h1><a href="timer.html">&#9201; タイマー</a></h1>
+      <p class="subtitle">サイバー風デザインのカウントダウンタイマー</p>
+
+      <div class="btn-row">
+        <a href="timer.html" class="launch-btn">&#9654; タイマーを起動する</a>
+        <a href="timer.zip" class="download-btn" download>&#11015; timer.zip をダウンロード</a>
+      </div>
+
+      <h2>&#128221; 使い方</h2>
+
+      <div class="card info">
+        <div class="card-title">基本操作</div>
+        <ul>
+          <li><code>timer.html</code> をブラウザで開きます。</li>
+          <li>「分」と「秒」の入力欄に時間を入力します。</li>
+          <li><strong>START</strong> ボタンでカウントダウン開始。</li>
+          <li><strong>STOP</strong> で一時停止 → <strong>CONTINUE</strong> で再開。</li>
+          <li><strong>RESET</strong> でタイマーを初期状態に戻します。</li>
+        </ul>
+      </div>
+
+      <h2>&#128190; ローカルで使う</h2>
+
+      <div class="card download">
+        <div class="card-title">&#11015;&#65039; ZIP をダウンロードして使う</div>
+        <p>インターネット接続なしでローカルでも動作します。以下の手順でセットアップしてください。</p>
+        <ul>
+          <li>上の <strong>timer.zip をダウンロード</strong> ボタン、または <a href="timer.zip" download>こちら</a> からファイルを保存します。</li>
+          <li>ZIP を任意のフォルダに展開します。</li>
+          <li>展開した <code>timer.html</code> をブラウザで開きます。</li>
+          <li><code>beep.wav</code> はすでに同梱されているため、別途ファイルを用意する必要はありません。好みの音に変えたい場合は、任意の WAV ファイルを <code>beep.wav</code> という名前にして上書きしてください。</li>
+        </ul>
+      </div>
+
+      <h2>&#9888;&#65039; 注意事項</h2>
+
+      <div class="card warning">
+        <div class="card-title">&#128264; beep.wav が見つからない場合</div>
+        <p>
+          タイマー終了時のアラーム音として <code>beep.wav</code> を読み込みます。<br>
+          このファイルが同じフォルダに存在しない場合でも、<strong>Web Audio API による代替ビープ音</strong>が自動で鳴るため、タイマー自体は正常に動作します。
+        </p>
+        <ul>
+          <li>好みのアラーム音を使いたい場合は、WAV ファイルを <code>beep.wav</code> という名前で <code>timer.html</code> と同じフォルダに配置してください。</li>
+          <li>MP3 など別の形式を使いたい場合は、<code>timer.html</code> 内の <code>&lt;audio&gt;</code> タグの <code>src</code> 属性を変更してください。</li>
+        </ul>
+      </div>
+
+      <div class="card warning">
+        <div class="card-title">&#128263; ブラウザの自動再生ポリシー</div>
+        <p>
+          多くのモダンブラウザでは、ユーザー操作なしの音声自動再生がブロックされます。<br>
+          タイマー開始時に START ボタンを押す操作がユーザーインタラクションとなるため、通常は問題ありませんが、
+          環境によっては音が鳴らないことがあります。その場合はブラウザの設定で音声の自動再生を許可してください。
+        </p>
+      </div>
+
+      <div class="card info">
+        <div class="card-title">&#127760; 背景が透明です（OBS 向け）</div>
+        <p>
+          <code>timer.html</code> の背景は <code>transparent</code> に設定されています。<br>
+          OBS の「ブラウザソース」として追加すると、タイマー部分だけを配信画面に重ねて表示できます。<br>
+          ブラウザで直接開いた場合は背景が白くなりますが、これは仕様です。
+          背景色を付けたい場合は、CSS の <code>body</code> の <code>background</code> を編集してください。
+        </p>
+      </div>
+
+      <h2>&#128193; ファイル構成</h2>
+
+      <div class="card info">
+        <div class="card-title">必要なファイル</div>
+        <div class="file-tree">
+          timer/<br>
+          ├── index.html &nbsp;&nbsp;&nbsp; ← このページ（注意事項）<br>
+          ├── timer.html &nbsp;&nbsp;&nbsp; ← タイマー本体<br>
+          └── beep.wav &nbsp;&nbsp;&nbsp;&nbsp;&nbsp; ← アラーム音（任意）
+        </div>
+      </div>
+
+      <h2>&#128736; 技術情報</h2>
+
+      <div class="card info">
+        <div class="card-title">動作環境・依存関係</div>
+        <ul>
+          <li><strong>言語:</strong> HTML / CSS / JavaScript（単一ファイル構成）</li>
+          <li><strong>依存ライブラリ:</strong> なし</li>
+          <li><strong>実行環境:</strong> モダンブラウザ（Chrome, Firefox, Edge, Safari 等）</li>
+          <li><strong>サーバー:</strong> 不要（ローカルファイルとして開けます）</li>
+        </ul>
+      </div>
+
+    </div>
+  </body>
+</html>

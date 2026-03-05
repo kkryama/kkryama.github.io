@@ -1,9 +1,14 @@
 
 <!DOCTYPE html>
-<html>
+<html lang="ja">
   <head>
     <meta charset="utf-8">
+    <title>タイマー</title>
     <style>
+      :root {
+        --accent: #ffd700;       /* アクセントカラー（メイン） */
+        --accent-hover: #ffe566; /* アクセントカラー（マウスカーソルをあわせたときの色） */
+      }
       body {
         margin: 0;
         background: transparent;
@@ -32,9 +37,9 @@
         stroke: rgba(255,255,255,0.2);
       }
       .progress {
-        stroke: #ffd700;
+        stroke: var(--accent);
         stroke-linecap: round;
-        filter: drop-shadow(0 0 10px #ffd700);
+        filter: drop-shadow(0 0 10px var(--accent));
       }
       #time {
         position: absolute;
@@ -45,8 +50,8 @@
         line-height: 1;
         margin: 0;
         text-shadow:
-          0 0 10px #ffd700,
-          0 0 20px #ffd700;
+          0 0 10px var(--accent),
+          0 0 20px var(--accent);
       }
       .inputs {
         margin-top: 20px;
@@ -59,10 +64,10 @@
         margin: 5px;
         text-align: center;
         background: rgba(0,0,0,0.6);
-        border: 2px solid #ffd700;
+        border: 2px solid var(--accent);
         border-radius: 8px;
         color: white;
-        box-shadow: 0 0 5px #ffd700;
+        box-shadow: 0 0 5px var(--accent);
       }
       button {
         font-size: 18px;
@@ -71,40 +76,87 @@
         width: 110px;
         border: none;
         border-radius: 8px;
-        background: #ffd700;
+        background: var(--accent);
         color: black;
         font-weight: bold;
         cursor: pointer;
       }
       button:hover {
-        background: #ffe566;
+        background: var(--accent-hover);
       }
     </style>
   </head>
   <body>
+    <audio id="beepSound" src="beep.wav" preload="auto"></audio>
     <div class="container">
       <svg viewBox="0 0 300 300">
         <circle class="bg" cx="150" cy="150" r="120"/>
-        <circle class="progress" cx="150" cy="150" r="120" stroke-dasharray="754" stroke-dashoffset="0"/>
+        <circle class="progress" cx="150" cy="150" r="120" stroke-dasharray="753.98" stroke-dashoffset="753.98"/>
       </svg>
       <div id="time">00:00</div>
       <div class="inputs">
-        <input id="min" type="number" placeholder="分"> :
-        <input id="sec" type="number" placeholder="秒">
+        <input id="min" type="number" placeholder="分" min="0"> <span style="color:var(--accent);">分</span>
+        <input id="sec" type="number" placeholder="秒" min="0" max="59"> <span style="color:var(--accent);">秒</span>
       </div>
       <div style="text-align:center; margin-top:10px;">
-        <button id="startBtn" onclick="startTimer()">START</button>
-        <button onclick="stopTimer()">STOP</button>
-        <button onclick="resetTimer()">RESET</button>
+        <button id="startBtn">START</button>
+        <button id="stopBtn">STOP</button>
+        <button id="resetBtn">RESET</button>
       </div>
-      <div id="inputMsg" style="text-align:center; margin-top:8px; font-size:13px; color:#ffd700; text-shadow:0 0 6px #ffd700; min-height:1.4em;"></div>
+      <div id="inputMsg" style="text-align:center; margin-top:8px; font-size:13px; color:var(--accent); text-shadow:0 0 6px var(--accent); min-height:1.4em;"></div>
     </div>
     <script>
+      document.querySelectorAll('input[type="number"]').forEach(function(el) {
+        el.addEventListener('keydown', function(e) {
+          if (e.key === '-' || e.key === 'e' || e.key === '+') e.preventDefault();
+        });
+        el.addEventListener('input', function() {
+          if (this.value < 0) this.value = 0;
+          if (this.id === 'sec' && this.value > 59) this.value = 59;
+        });
+      });
+
+      // --- 状態管理 ---
+      const STATE_IDLE = 'idle';
+      const STATE_RUNNING = 'running';
+      const STATE_PAUSED = 'paused';
+      let timerState = STATE_IDLE;
+
       let totalTime = 0;
       let remaining = 0;
+      let remainingAtStart = 0;
+      let startAt = null;
       let timer = null;
+
       const circle = document.querySelector(".progress");
-      const circumference = 754;
+      const circumference = 2 * Math.PI * 120;
+      circle.setAttribute('stroke-dasharray', circumference);
+
+      // --- ビープ音（beep.wav 優先、なければ Web Audio API フォールバック） ---
+      function playBeepFallback() {
+        try {
+          const ctx = new (window.AudioContext || window.webkitAudioContext)();
+          const oscillator = ctx.createOscillator();
+          const gain = ctx.createGain();
+          oscillator.type = 'square';
+          oscillator.frequency.value = 880;
+          gain.gain.value = 0.3;
+          oscillator.connect(gain);
+          gain.connect(ctx.destination);
+          oscillator.start();
+          oscillator.stop(ctx.currentTime + 1);
+          oscillator.onended = function() { ctx.close(); };
+        } catch (e) { /* Audio API 未対応環境では無視 */ }
+      }
+
+      function playBeep() {
+        const audio = document.getElementById("beepSound");
+        audio.currentTime = 0;
+        audio.play().catch(function() {
+          playBeepFallback();
+        });
+      }
+
       function updateDisplay() {
         let m = Math.floor(remaining / 60);
         let s = remaining % 60;
@@ -112,6 +164,7 @@
         let progress = totalTime ? remaining / totalTime : 0;
         circle.style.strokeDashoffset = circumference * (1 - progress);
       }
+
       function setInputsDisabled(disabled) {
         document.getElementById("min").disabled = disabled;
         document.getElementById("sec").disabled = disabled;
@@ -119,51 +172,60 @@
           ? "時間を変更するときは RESET してください。"
           : "";
       }
-      function setStartButton(label) {
-        const btn = document.getElementById("startBtn");
-        btn.textContent = label;
-        btn.onclick = label === "START" ? startTimer : continueTimer;
+
+      function updateStartButton() {
+        document.getElementById("startBtn").textContent =
+          timerState === STATE_IDLE ? "START" : "CONTINUE";
       }
+
+      function tick() {
+        const elapsed = Math.floor((Date.now() - startAt) / 1000);
+        remaining = Math.max(remainingAtStart - elapsed, 0);
+        updateDisplay();
+        if (remaining <= 0) {
+          clearInterval(timer);
+          timer = null;
+          timerState = STATE_IDLE;
+          playBeep();
+          setInputsDisabled(false);
+          updateStartButton();
+        }
+      }
+
       function startTimer() {
-        let m = parseInt(document.getElementById("min").value) || 0;
-        let s = parseInt(document.getElementById("sec").value) || 0;
+        if (timerState !== STATE_IDLE) return;
+        let m = parseInt(document.getElementById("min").value, 10) || 0;
+        let s = parseInt(document.getElementById("sec").value, 10) || 0;
+        s = Math.min(s, 59);
         totalTime = m * 60 + s;
         if (totalTime === 0) return;
+        if (timer) { clearInterval(timer); timer = null; }
         remaining = totalTime;
+        remainingAtStart = remaining;
+        startAt = Date.now();
+        timerState = STATE_RUNNING;
         setInputsDisabled(true);
-        setStartButton("CONTINUE");
+        updateStartButton();
         updateDisplay();
-        timer = setInterval(() => {
-          if (remaining > 0) {
-            remaining--;
-            updateDisplay();
-          } else {
-            clearInterval(timer);
-            timer = null;
-            setInputsDisabled(false);
-            setStartButton("START");
-          }
-        }, 1000);
+        timer = setInterval(tick, 200);
       }
+
       function continueTimer() {
-        if (timer) return;
+        if (timerState !== STATE_PAUSED) return;
         if (remaining <= 0) return;
-        timer = setInterval(() => {
-          if (remaining > 0) {
-            remaining--;
-            updateDisplay();
-          } else {
-            clearInterval(timer);
-            timer = null;
-            setInputsDisabled(false);
-            setStartButton("START");
-          }
-        }, 1000);
+        remainingAtStart = remaining;
+        startAt = Date.now();
+        timerState = STATE_RUNNING;
+        timer = setInterval(tick, 200);
       }
+
       function stopTimer() {
+        if (timerState !== STATE_RUNNING) return;
         clearInterval(timer);
         timer = null;
+        timerState = STATE_PAUSED;
       }
+
       function resetTimer() {
         if (timer) {
           clearInterval(timer);
@@ -171,10 +233,21 @@
         }
         totalTime = 0;
         remaining = 0;
+        timerState = STATE_IDLE;
         setInputsDisabled(false);
-        setStartButton("START");
+        updateStartButton();
         updateDisplay();
       }
+
+      document.getElementById("startBtn").addEventListener("click", function() {
+        if (timerState === STATE_PAUSED) {
+          continueTimer();
+        } else {
+          startTimer();
+        }
+      });
+      document.getElementById("stopBtn").addEventListener("click", stopTimer);
+      document.getElementById("resetBtn").addEventListener("click", resetTimer);
     </script>
   </body>
 </html>
