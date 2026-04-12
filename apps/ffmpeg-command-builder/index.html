@@ -1,0 +1,1559 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FFmpeg クリップ編集コマンド生成ツール</title>
+  <style>
+    :root {
+      --bg-color: #f6f7fb;
+      --bg-accent: #eef1f7;
+      --surface-color: #ffffff;
+      --surface-strong: #ffffff;
+      --panel-shadow: 0 12px 24px rgba(31, 41, 51, 0.06);
+      --border-color: #d1d5db;
+      --text-color: #1f2933;
+      --muted-text: #6b7280;
+      --accent-color: #3c82f6;
+      --accent-color-dark: #2e6ad6;
+      --accent-soft: rgba(60, 130, 246, 0.12);
+      --warm-color: #10b981;
+      --warm-color-dark: #059669;
+      --error-color: #991b1b;
+      --error-soft: #fee2e2;
+      --success-color: #065f46;
+      --success-soft: #dcfce7;
+      --input-bg: #ffffff;
+      --disabled-bg: #eef1f7;
+      --radius-large: 12px;
+      --radius-medium: 16px;
+      --radius-small: 12px;
+      --transition: 180ms ease;
+      font-family: "Hiragino Kaku Gothic ProN", "Meiryo", "Yu Gothic", sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      color: var(--text-color);
+      background: var(--bg-color);
+    }
+
+    .page {
+      width: min(960px, 100%);
+      margin: 0 auto;
+      padding: 24px clamp(16px, 3vw, 40px) 48px;
+    }
+
+    .hero,
+    .panel {
+      border: 1px solid transparent;
+      border-radius: var(--radius-large);
+      background: var(--surface-color);
+      box-shadow: var(--panel-shadow);
+      animation: fadeUp 540ms ease both;
+    }
+
+    .hero {
+      padding: 24px;
+      margin-bottom: 24px;
+    }
+
+    .hero::after {
+      display: none;
+    }
+
+    .hero__back {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--muted-text);
+      text-decoration: none;
+      font-size: 0.95rem;
+      margin-bottom: 14px;
+    }
+
+    .hero__back:hover {
+      color: var(--accent-color);
+    }
+
+    .hero__title {
+      margin: 12px 0 10px;
+      font-size: clamp(1.9rem, 4.4vw, 2.8rem);
+      line-height: 1.15;
+      letter-spacing: -0.04em;
+      max-width: none;
+    }
+
+    .hero__lead {
+      margin: 0;
+      color: var(--muted-text);
+      line-height: 1.7;
+      font-size: 0.96rem;
+    }
+
+    .summary-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      border-radius: 999px;
+      background: rgba(31, 41, 51, 0.04);
+      color: var(--text-color);
+      font-size: 0.92rem;
+      border: 1px solid rgba(31, 41, 51, 0.12);
+    }
+
+    .panel {
+      padding: clamp(18px, 3vw, 22px);
+    }
+
+    .form-panel {
+      animation-delay: 80ms;
+      max-width: 860px;
+      margin: 0 auto;
+    }
+
+    .section + .section {
+      margin-top: 24px;
+      padding-top: 24px;
+      border-top: 1px solid rgba(31, 41, 51, 0.08);
+    }
+
+    .section__head {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      margin-bottom: 12px;
+    }
+
+    .section__title {
+      margin: 0;
+      font-size: 1.1rem;
+      line-height: 1.3;
+    }
+
+    .section__description,
+    .section__note,
+    .field__hint,
+    .mode-card__description,
+    .message {
+      margin: 0;
+      color: var(--muted-text);
+      line-height: 1.65;
+    }
+
+    .field-grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 16px;
+    }
+
+    .field-grid--single {
+      grid-template-columns: 1fr;
+    }
+
+    .field,
+    .checkbox-field {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .field__label,
+    .checkbox-field__label,
+    .mode-card__title {
+      font-size: 0.95rem;
+      font-weight: 700;
+      color: var(--text-color);
+    }
+
+    .field input,
+    .field select,
+    textarea {
+      width: 100%;
+      min-height: 50px;
+      padding: 12px 14px;
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius-small);
+      background: var(--input-bg);
+      color: var(--text-color);
+      font: inherit;
+      transition: border-color var(--transition), box-shadow var(--transition), transform var(--transition), background var(--transition);
+    }
+
+    .field input:focus,
+    .field select:focus,
+    textarea:focus {
+      outline: none;
+      border-color: rgba(60, 130, 246, 0.6);
+      box-shadow: 0 0 0 4px rgba(60, 130, 246, 0.12);
+      transform: translateY(-1px);
+    }
+
+    .field input:disabled,
+    .field select:disabled {
+      background: var(--disabled-bg);
+      color: rgba(31, 41, 51, 0.56);
+      cursor: not-allowed;
+    }
+
+    .mode-grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 16px;
+    }
+
+    .mode-card {
+      position: relative;
+      display: block;
+      padding: 18px;
+      border-radius: var(--radius-medium);
+      background: var(--surface-color);
+      border: 1px solid var(--border-color);
+      cursor: pointer;
+      transition: transform var(--transition), border-color var(--transition), box-shadow var(--transition), background var(--transition);
+    }
+
+    .mode-card:hover {
+      transform: translateY(-1px);
+      background: #eef1f7;
+      box-shadow: 0 6px 12px rgba(31, 41, 51, 0.08);
+    }
+
+    .mode-card input {
+      position: absolute;
+      opacity: 0;
+      inset: 0;
+      cursor: pointer;
+    }
+
+    .mode-card__title-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 8px;
+    }
+
+    .mode-card__badge {
+      padding: 5px 10px;
+      border-radius: 999px;
+      font-size: 0.78rem;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      background: rgba(31, 41, 51, 0.08);
+      color: var(--muted-text);
+    }
+
+    .mode-card--selected {
+      border-color: rgba(60, 130, 246, 0.45);
+      background: rgba(60, 130, 246, 0.08);
+      box-shadow: inset 0 0 0 1px rgba(60, 130, 246, 0.18);
+    }
+
+    .mode-card--selected .mode-card__badge {
+      background: rgba(60, 130, 246, 0.14);
+      color: var(--accent-color-dark);
+    }
+
+    .option-grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 16px;
+    }
+
+    .checkbox-cluster {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 12px;
+    }
+
+    .checkbox-field {
+      flex-direction: row;
+      align-items: center;
+      justify-content: space-between;
+      min-height: 56px;
+      padding: 14px 16px;
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius-small);
+      background: var(--surface-color);
+    }
+
+    .checkbox-field input {
+      width: 18px;
+      height: 18px;
+      accent-color: var(--accent-color);
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+
+    .disabled-note {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 12px;
+      border-radius: 999px;
+      background: var(--accent-soft);
+      color: var(--accent-color-dark);
+      font-size: 0.88rem;
+      font-weight: 600;
+    }
+
+    .output-panel__header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+
+    .status-badge {
+      display: inline-flex;
+      align-items: center;
+      padding: 8px 12px;
+      border-radius: 999px;
+      font-size: 0.85rem;
+      font-weight: 700;
+      background: rgba(31, 41, 51, 0.08);
+      color: var(--muted-text);
+    }
+
+    .status-badge--ready {
+      background: var(--success-soft);
+      color: var(--success-color);
+    }
+
+    .status-badge--error {
+      background: var(--error-soft);
+      color: var(--error-color);
+    }
+
+    textarea {
+      min-height: 220px;
+      resize: vertical;
+      line-height: 1.7;
+    }
+
+    .action-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-top: 16px;
+    }
+
+    .button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      min-height: 48px;
+      padding: 12px 18px;
+      border-radius: 999px;
+      border: 1px solid transparent;
+      font: inherit;
+      font-weight: 700;
+      cursor: pointer;
+      transition: transform var(--transition), box-shadow var(--transition), background var(--transition), border-color var(--transition), color var(--transition);
+    }
+
+    .button:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 12px 20px rgba(31, 41, 51, 0.12);
+    }
+
+    .button:disabled {
+      cursor: not-allowed;
+      opacity: 0.5;
+      transform: none;
+      box-shadow: none;
+    }
+
+    .button--primary {
+      background: var(--accent-color);
+      color: #fff;
+    }
+
+    .button--primary:hover {
+      background: var(--accent-color-dark);
+    }
+
+    .button--accent {
+      background: var(--warm-color);
+      color: #fff;
+    }
+
+    .button--accent:hover {
+      background: var(--warm-color-dark);
+    }
+
+    .message {
+      margin-top: 14px;
+      padding: 14px 16px;
+      border-radius: var(--radius-small);
+      background: var(--surface-color);
+      border: 1px solid var(--border-color);
+    }
+
+    .message--success {
+      color: var(--success-color);
+      background: var(--success-soft);
+      border-color: rgba(22, 101, 52, 0.15);
+    }
+
+    .message--error {
+      color: var(--error-color);
+      background: var(--error-soft);
+      border-color: rgba(180, 35, 24, 0.15);
+    }
+
+    .error-list {
+      margin: 14px 0 0;
+      padding-left: 18px;
+      color: var(--error-color);
+      line-height: 1.8;
+    }
+
+    .error-list:empty {
+      display: none;
+    }
+
+    .summary-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 14px;
+    }
+
+    .summary-heading {
+      margin-top: 16px;
+    }
+
+    .is-hidden {
+      display: none !important;
+    }
+
+    @keyframes fadeUp {
+      from {
+        opacity: 0;
+        transform: translateY(16px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    @media (max-width: 720px) {
+      .page {
+        width: min(100vw - 20px, 100%);
+        padding-top: 18px;
+      }
+
+      .output-panel__header {
+        flex-direction: column;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <header class="hero">
+      <h1 class="hero__title">FFmpeg Command Builderよく使う編集コマンドを、入力だけで整える</h1>
+      <p class="hero__lead">動画カット、先頭 / 末尾カット、速度変更、フェードイン / フェードアウトを選んで、ffmpeg コマンドを 1 行で生成します。よく使う調整だけに絞り、迷わず使える形にしています。</p>
+    </header>
+
+    <main>
+      <form id="commandForm" class="panel form-panel" novalidate>
+        <section class="section">
+          <div class="section__head">
+            <div>
+              <h2 class="section__title">操作選択</h2>
+              <p class="section__description">やりたいことを選ぶと、その操作に必要な入力だけを表示します。</p>
+            </div>
+          </div>
+          <div class="field-grid">
+            <label class="field">
+              <span class="field__label">操作</span>
+              <select id="operationSelect" name="operation">
+                <option value="cut" selected>動画カット</option>
+                <option value="trim-edge">先頭 / 末尾カット</option>
+                <option value="speed-change">速度変更</option>
+                <option value="fade">フェードイン / フェードアウト</option>
+              </select>
+              <span id="operationDescription" class="field__hint">開始時刻と終了時刻を指定して、必要な区間だけを切り出します。</span>
+            </label>
+          </div>
+        </section>
+
+        <section class="section">
+          <div class="section__head">
+            <div>
+              <h2 class="section__title">基本設定</h2>
+              <p class="section__description">入力と出力のファイル名を指定します。空白がある場合でも引用符付きで出力します。</p>
+            </div>
+          </div>
+          <div class="field-grid">
+            <label class="field">
+              <span class="field__label">入力ファイル名</span>
+              <input id="inputFile" name="inputFile" type="text" value="input.mp4" autocomplete="off" spellcheck="false">
+            </label>
+            <label class="field">
+              <span class="field__label">出力ファイル名</span>
+              <input id="outputFile" name="outputFile" type="text" value="output.mp4" autocomplete="off" spellcheck="false">
+            </label>
+          </div>
+        </section>
+
+        <section class="section" data-operation-section="cut">
+          <div class="section__head">
+            <div>
+              <h2 class="section__title">カット設定</h2>
+              <p class="section__description">開始と終了を HH:MM:SS 形式で入力します。内部では差分を計算して -t に変換します。</p>
+            </div>
+            <!-- <span class="disabled-note">形式: 00:01:30</span> -->
+          </div>
+          <div class="field-grid">
+            <label class="field">
+              <span class="field__label">開始時刻</span>
+              <input id="startTime" name="startTime" type="text" placeholder="00:01:30 (例: 00:01:30 から切り出し開始)" inputmode="numeric" autocomplete="off" spellcheck="false">
+            </label>
+            <label class="field">
+              <span class="field__label">終了時刻</span>
+              <input id="endTime" name="endTime" type="text" placeholder="00:02:00 (例: 00:02:00 で切り出し終了)" inputmode="numeric" autocomplete="off" spellcheck="false">
+            </label>
+          </div>
+        </section>
+
+        <section class="section is-hidden" data-operation-section="trim-edge">
+          <div class="section__head">
+            <div>
+              <h2 class="section__title">先頭 / 末尾カット設定</h2>
+              <p class="section__description">動画の冒頭側を削るか、末尾側を削るかを選びます。</p>
+            </div>
+          </div>
+          <div class="field-grid">
+            <label class="field">
+              <span class="field__label">カット対象</span>
+              <select id="trimDirection" name="trimDirection">
+                <option value="start" selected>先頭カット</option>
+                <option value="end">末尾カット</option>
+              </select>
+              <span class="field__hint">先頭カットは前半を削除し、末尾カットは後半を削除します。</span>
+            </label>
+            <label class="field">
+              <span class="field__label">基準時刻</span>
+              <input id="trimTime" name="trimTime" type="text" placeholder="00:01:30" inputmode="numeric" autocomplete="off" spellcheck="false">
+              <span id="trimTimeHint" class="field__hint">この時刻より前を削除し、それ以降を残します。</span>
+            </label>
+          </div>
+        </section>
+
+        <section class="section is-hidden" data-operation-section="speed-change">
+          <div class="section__head">
+            <div>
+              <h2 class="section__title">速度変更設定</h2>
+              <p class="section__description">動画全体の再生速度を変更します。映像は setpts、音声は atempo で調整します。</p>
+            </div>
+          </div>
+          <div class="field-grid field-grid--single">
+            <label class="field">
+              <span class="field__label">速度倍率</span>
+              <input id="speedFactor" name="speedFactor" type="text" placeholder="1.25" inputmode="decimal" autocomplete="off" spellcheck="false">
+              <span class="field__hint">0.25 から 4.0 の範囲で指定します。1.0 は変更なしなので使えません。</span>
+            </label>
+          </div>
+        </section>
+
+        <section class="section is-hidden" data-operation-section="fade">
+          <div class="section__head">
+            <div>
+              <h2 class="section__title">フェード設定</h2>
+              <p class="section__description">フェードイン、フェードアウト、またはその両方を適用します。フェードアウト時刻は動画の先頭からの絶対位置で指定します。</p>
+            </div>
+          </div>
+          <div class="field-grid">
+            <label class="field">
+              <span class="field__label">フェード種類</span>
+              <select id="fadeType" name="fadeType">
+                <option value="in" selected>フェードイン</option>
+                <option value="out">フェードアウト</option>
+                <option value="both">フェードイン + フェードアウト</option>
+              </select>
+              <span class="field__hint">フェードインは 0 秒地点から始まります。</span>
+            </label>
+            <label class="field">
+              <span class="field__label">フェード時間（秒）</span>
+              <input id="fadeDuration" name="fadeDuration" type="text" placeholder="1.5" inputmode="decimal" autocomplete="off" spellcheck="false">
+              <span class="field__hint">0 より大きい値を秒で指定します。</span>
+            </label>
+          </div>
+          <div class="field-grid field-grid--single" style="margin-top: 16px;">
+            <label class="field">
+              <span class="field__label">フェードアウト開始時刻</span>
+              <input id="fadeStartTime" name="fadeStartTime" type="text" placeholder="00:09:30" inputmode="numeric" autocomplete="off" spellcheck="false" disabled>
+              <span id="fadeStartHint" class="field__hint">フェードインのみの場合は不要です。</span>
+            </label>
+          </div>
+        </section>
+
+        <section id="modeSection" class="section">
+          <div class="section__head">
+            <div>
+              <h2 class="section__title">モード</h2>
+              <p class="section__description">動画カットと先頭 / 末尾カットで使います。速度変更とフェードは再エンコード固定です。</p>
+            </div>
+          </div>
+          <div class="mode-grid" role="radiogroup" aria-label="カットモード">
+            <label class="mode-card" id="fastModeCard">
+              <input type="radio" name="mode" value="fast">
+              <div class="mode-card__title-row">
+                <span class="mode-card__title">コピー</span>
+                <span class="mode-card__badge">copy</span>
+              </div>
+              <p class="mode-card__description">無劣化・高速です。-c copy を固定で使うため、再エンコード系の設定は無効になります。</p>
+            </label>
+            <label class="mode-card" id="accurateModeCard">
+              <input type="radio" name="mode" value="accurate" checked>
+              <div class="mode-card__title-row">
+                <span class="mode-card__title">再エンコード</span>
+                <span class="mode-card__badge">re-encode</span>
+              </div>
+              <p class="mode-card__description">再エンコードするため低速ですが、指定区間を切り出しやすくなります。</p>
+            </label>
+          </div>
+        </section>
+
+        <section id="encodeSection" class="section">
+          <div class="section__head">
+            <div>
+              <h2 class="section__title">エンコード設定</h2>
+              <p class="section__description">再エンコードを使う操作で反映される設定です。コピーでは stream copy を優先します。</p>
+            </div>
+          </div>
+          <p id="modeNote" class="section__note">再エンコードでは動画と音声を指定した設定で処理します。</p>
+          <div class="field-grid">
+            <label class="field">
+              <span class="field__label">動画コーデック</span>
+              <select id="videoCodec" name="videoCodec">
+                <option value="libx264" selected>libx264</option>
+                <option value="libx265">libx265</option>
+              </select>
+              <span class="field__hint">コピーでは -c copy を固定で使用します。</span>
+            </label>
+            <label class="field">
+              <span class="field__label">音声コーデック</span>
+              <select id="audioCodec" name="audioCodec">
+                <option value="aac" selected>aac</option>
+                <option value="mp3">mp3</option>
+                <option value="copy">copy</option>
+              </select>
+              <span class="field__hint">音声なしを ON にすると無効になります。</span>
+            </label>
+          </div>
+          <div class="field-grid field-grid--single" style="margin-top: 16px;">
+            <label class="field">
+              <span class="field__label">preset</span>
+              <select id="preset" name="preset">
+                <option value="ultrafast">ultrafast</option>
+                <option value="veryfast" selected>veryfast</option>
+                <option value="faster">faster</option>
+                <option value="medium">medium</option>
+                <option value="slow">slow</option>
+              </select>
+              <span class="field__hint">libx264 / libx265 の速度と圧縮効率のバランスを決めます。</span>
+            </label>
+          </div>
+        </section>
+
+        <section id="optionsSection" class="section">
+          <div class="section__head">
+            <div>
+              <h2 class="section__title">追加オプション</h2>
+              <p class="section__description">必要に応じて解像度、フレームレート、音声有無、上書きを切り替えます。</p>
+            </div>
+          </div>
+          <div class="option-grid">
+            <label class="field">
+              <span class="field__label">解像度</span>
+              <input id="resolution" name="resolution" type="text" placeholder="1280x720" inputmode="numeric" autocomplete="off" spellcheck="false">
+              <span class="field__hint">未入力なら変更しません。</span>
+            </label>
+            <label class="field">
+              <span class="field__label">フレームレート</span>
+              <input id="frameRate" name="frameRate" type="text" placeholder="30" inputmode="decimal" autocomplete="off" spellcheck="false">
+              <span class="field__hint">未入力なら変更しません。</span>
+            </label>
+          </div>
+          <div class="checkbox-cluster" style="margin-top: 16px;">
+            <label class="checkbox-field">
+              <div>
+                <div class="checkbox-field__label">音声なし</div>
+                <p class="field__hint">ON の場合は -an を追加します。</p>
+              </div>
+              <input id="audioNone" name="audioNone" type="checkbox">
+            </label>
+            <label class="checkbox-field">
+              <div>
+                <div class="checkbox-field__label">上書き</div>
+                <p class="field__hint">ON の場合は -y を追加します。</p>
+              </div>
+              <input id="overwrite" name="overwrite" type="checkbox" checked>
+            </label>
+          </div>
+        </section>
+        <section class="section">
+          <div class="output-panel__header">
+            <h2 class="section__title">生成結果</h2>
+            <span id="statusBadge" class="status-badge">入力待ち</span>
+          </div>
+          <p class="section__description">条件が揃うと自動で更新します。必要なら生成ボタンで再評価できます。</p>
+          <textarea id="commandOutput" readonly placeholder="ここに ffmpeg コマンドが表示されます"></textarea>
+          <div class="action-row">
+            <button id="generateButton" class="button button--primary" type="submit" form="commandForm">コマンド生成</button>
+            <button id="copyButton" class="button button--accent" type="button" disabled>コピー</button>
+          </div>
+          <p id="feedbackMessage" class="message" aria-live="polite">開始時刻と終了時刻を入力すると、ここにコマンドを表示します。</p>
+          <ul id="errorList" class="error-list" aria-live="polite"></ul>
+          <p class="section__note summary-heading">反映中の設定</p>
+          <div id="summaryList" class="summary-list"></div>
+        </section>
+      </form>
+    </main>
+  </div>
+
+  <script>
+    const state = {
+      hasSubmitted: false,
+      activeOperationId: "cut"
+    };
+
+    const elements = {
+      form: document.getElementById("commandForm"),
+      operationSelect: document.getElementById("operationSelect"),
+      operationDescription: document.getElementById("operationDescription"),
+      inputFile: document.getElementById("inputFile"),
+      outputFile: document.getElementById("outputFile"),
+      startTime: document.getElementById("startTime"),
+      endTime: document.getElementById("endTime"),
+      trimDirection: document.getElementById("trimDirection"),
+      trimTime: document.getElementById("trimTime"),
+      trimTimeHint: document.getElementById("trimTimeHint"),
+      speedFactor: document.getElementById("speedFactor"),
+      fadeType: document.getElementById("fadeType"),
+      fadeDuration: document.getElementById("fadeDuration"),
+      fadeStartTime: document.getElementById("fadeStartTime"),
+      fadeStartHint: document.getElementById("fadeStartHint"),
+      modeRadios: Array.from(document.querySelectorAll('input[name="mode"]')),
+      fastModeCard: document.getElementById("fastModeCard"),
+      accurateModeCard: document.getElementById("accurateModeCard"),
+      videoCodec: document.getElementById("videoCodec"),
+      audioCodec: document.getElementById("audioCodec"),
+      preset: document.getElementById("preset"),
+      resolution: document.getElementById("resolution"),
+      frameRate: document.getElementById("frameRate"),
+      audioNone: document.getElementById("audioNone"),
+      overwrite: document.getElementById("overwrite"),
+      modeSection: document.getElementById("modeSection"),
+      encodeSection: document.getElementById("encodeSection"),
+      optionsSection: document.getElementById("optionsSection"),
+      modeNote: document.getElementById("modeNote"),
+      commandOutput: document.getElementById("commandOutput"),
+      generateButton: document.getElementById("generateButton"),
+      copyButton: document.getElementById("copyButton"),
+      feedbackMessage: document.getElementById("feedbackMessage"),
+      errorList: document.getElementById("errorList"),
+      statusBadge: document.getElementById("statusBadge"),
+      summaryList: document.getElementById("summaryList"),
+      operationSections: {
+        cut: Array.from(document.querySelectorAll('[data-operation-section="cut"]')),
+        "trim-edge": Array.from(document.querySelectorAll('[data-operation-section="trim-edge"]')),
+        "speed-change": Array.from(document.querySelectorAll('[data-operation-section="speed-change"]')),
+        fade: Array.from(document.querySelectorAll('[data-operation-section="fade"]'))
+      }
+    };
+
+    function getValues() {
+      return {
+        operation: elements.operationSelect.value,
+        inputFile: elements.inputFile.value.trim(),
+        outputFile: elements.outputFile.value.trim(),
+        startTime: elements.startTime.value.trim(),
+        endTime: elements.endTime.value.trim(),
+        trimDirection: elements.trimDirection.value,
+        trimTime: elements.trimTime.value.trim(),
+        speedFactor: elements.speedFactor.value.trim(),
+        fadeType: elements.fadeType.value,
+        fadeDuration: elements.fadeDuration.value.trim(),
+        fadeStartTime: elements.fadeStartTime.value.trim(),
+        mode: elements.modeRadios.find((radio) => radio.checked)?.value ?? "accurate",
+        videoCodec: elements.videoCodec.value,
+        audioCodec: elements.audioCodec.value,
+        preset: elements.preset.value,
+        resolution: elements.resolution.value.trim(),
+        frameRate: elements.frameRate.value.trim(),
+        audioNone: elements.audioNone.checked,
+        overwrite: elements.overwrite.checked
+      };
+    }
+
+    function parseTimecode(value) {
+      const match = /^(\d{2,}):(\d{2}):(\d{2})$/.exec(value);
+      if (!match) {
+        return null;
+      }
+      const hours = Number.parseInt(match[1], 10);
+      const minutes = Number.parseInt(match[2], 10);
+      const seconds = Number.parseInt(match[3], 10);
+      if (minutes > 59 || seconds > 59) {
+        return null;
+      }
+      return (hours * 3600) + (minutes * 60) + seconds;
+    }
+
+    function formatDuration(totalSeconds) {
+      const hours = Math.floor(totalSeconds / 3600);
+      const minutes = Math.floor((totalSeconds % 3600) / 60);
+      const seconds = totalSeconds % 60;
+      return [hours, minutes, seconds].map((value) => String(value).padStart(2, "0")).join(":");
+    }
+
+    function formatFilterNumber(value) {
+      return Number(value.toFixed(3)).toString();
+    }
+
+    function escapeShellArg(value) {
+      return '"' + value.replace(/(["\\$`])/g, "\\$1") + '"';
+    }
+
+    function parseDecimalValue(value) {
+      if (!/^(?:\d+|\d+\.\d+)$/.test(value)) {
+        return null;
+      }
+      return Number.parseFloat(value);
+    }
+
+    function validateCommonFiles(values, errors, enforceRequired) {
+      if (enforceRequired && !values.inputFile) {
+        errors.push("入力ファイル名を入力してください。");
+      }
+      if (enforceRequired && !values.outputFile) {
+        errors.push("出力ファイル名を入力してください。");
+      }
+    }
+
+    function validateResolutionAndFrameRate(values, errors) {
+      if (values.resolution && !/^\d{2,5}x\d{2,5}$/i.test(values.resolution)) {
+        errors.push("解像度は 1280x720 のように入力してください。");
+      }
+      if (values.frameRate && !/^(?:\d+|\d+\.\d+)$/.test(values.frameRate)) {
+        errors.push("フレームレートは 30 または 29.97 のように入力してください。");
+      }
+      if (values.frameRate && Number.parseFloat(values.frameRate) <= 0) {
+        errors.push("フレームレートは 0 より大きい値を指定してください。");
+      }
+    }
+
+    function buildCopyCommand(values, options = {}) {
+      const { preInputArgs = [], postInputArgs = [] } = options;
+      const parts = ["ffmpeg"];
+      if (values.overwrite) {
+        parts.push("-y");
+      }
+      parts.push(...preInputArgs, "-i", escapeShellArg(values.inputFile), ...postInputArgs, "-c", "copy");
+      if (values.audioNone) {
+        parts.push("-an");
+      }
+      parts.push(escapeShellArg(values.outputFile));
+      return parts.join(" ");
+    }
+
+    function buildTranscodeCommand(values, options = {}) {
+      const { preInputArgs = [], postInputArgs = [], videoFilter = null, audioFilter = null } = options;
+      const parts = ["ffmpeg"];
+      if (values.overwrite) {
+        parts.push("-y");
+      }
+      parts.push(...preInputArgs, "-i", escapeShellArg(values.inputFile), ...postInputArgs);
+      if (videoFilter) {
+        parts.push("-vf", escapeShellArg(videoFilter));
+      }
+      if (values.audioNone) {
+        parts.push("-an");
+      } else {
+        if (audioFilter) {
+          parts.push("-af", escapeShellArg(audioFilter));
+        }
+        parts.push("-c:a", values.audioCodec);
+      }
+      parts.push("-c:v", values.videoCodec, "-preset", values.preset);
+      if (values.resolution) {
+        parts.push("-s", values.resolution);
+      }
+      if (values.frameRate) {
+        parts.push("-r", values.frameRate);
+      }
+      parts.push(escapeShellArg(values.outputFile));
+      return parts.join(" ");
+    }
+
+    function buildFastCutCommand(values, duration) {
+      return buildCopyCommand(values, {
+        preInputArgs: ["-ss", values.startTime],
+        postInputArgs: ["-t", duration]
+      });
+    }
+
+    function buildAccurateCutCommand(values, duration) {
+      return buildTranscodeCommand(values, {
+        postInputArgs: ["-ss", values.startTime, "-t", duration]
+      });
+    }
+
+    function buildFastTrimEdgeCommand(values, trimPoint) {
+      if (values.trimDirection === "start") {
+        return buildCopyCommand(values, {
+          preInputArgs: ["-ss", trimPoint]
+        });
+      }
+      return buildCopyCommand(values, {
+        postInputArgs: ["-t", trimPoint]
+      });
+    }
+
+    function buildAccurateTrimEdgeCommand(values, trimPoint) {
+      if (values.trimDirection === "start") {
+        return buildTranscodeCommand(values, {
+          postInputArgs: ["-ss", trimPoint]
+        });
+      }
+      return buildTranscodeCommand(values, {
+        postInputArgs: ["-t", trimPoint]
+      });
+    }
+
+    function buildAtempoFilter(speedFactor) {
+      const filters = [];
+      let remaining = speedFactor;
+
+      while (remaining > 2.0 + 1e-9) {
+        filters.push("atempo=2");
+        remaining /= 2;
+      }
+
+      while (remaining < 0.5 - 1e-9) {
+        filters.push("atempo=0.5");
+        remaining /= 0.5;
+      }
+
+      filters.push(`atempo=${formatFilterNumber(remaining)}`);
+      return filters.join(",");
+    }
+
+    function getActiveOperation() {
+      state.activeOperationId = elements.operationSelect.value;
+      return operations[state.activeOperationId] ?? operations.cut;
+    }
+
+    function setFeedback(kind, message) {
+      elements.feedbackMessage.textContent = message;
+      elements.feedbackMessage.className = "message";
+      if (kind === "success") {
+        elements.feedbackMessage.classList.add("message--success");
+      }
+      if (kind === "error") {
+        elements.feedbackMessage.classList.add("message--error");
+      }
+    }
+
+    function setStatus(kind, text) {
+      elements.statusBadge.textContent = text;
+      elements.statusBadge.className = "status-badge";
+      if (kind === "ready") {
+        elements.statusBadge.classList.add("status-badge--ready");
+      }
+      if (kind === "error") {
+        elements.statusBadge.classList.add("status-badge--error");
+      }
+    }
+
+    function renderErrors(errors) {
+      elements.errorList.innerHTML = "";
+      errors.forEach((error) => {
+        const item = document.createElement("li");
+        item.textContent = error;
+        elements.errorList.appendChild(item);
+      });
+    }
+
+    function renderSummary(chips) {
+      elements.summaryList.innerHTML = "";
+      chips.forEach((chip) => {
+        const element = document.createElement("span");
+        element.className = "summary-chip";
+        element.textContent = chip;
+        elements.summaryList.appendChild(element);
+      });
+    }
+
+    function updateModeCards(values) {
+      elements.fastModeCard.classList.toggle("mode-card--selected", values.mode === "fast");
+      elements.accurateModeCard.classList.toggle("mode-card--selected", values.mode === "accurate");
+    }
+
+    function updateTrimTimeHint(values) {
+      elements.trimTimeHint.textContent = values.trimDirection === "start"
+        ? "この時刻より前を削除し、それ以降を残します。"
+        : "動画の先頭からこの時刻までを残し、それ以降を削除します。";
+    }
+
+    function updateFadeFieldState(values) {
+      const needsFadeStart = values.fadeType !== "in";
+      elements.fadeStartTime.disabled = !needsFadeStart;
+      elements.fadeStartHint.textContent = needsFadeStart
+        ? "フェードアウトを始める時刻を HH:MM:SS 形式で指定します。"
+        : "フェードインのみの場合は不要です。";
+    }
+
+    function setCommonEncodeState(values, options = {}) {
+      const {
+        disableVideoCodec = false,
+        disableAudioCodec = false,
+        disablePreset = false,
+        disableResolution = false,
+        disableFrameRate = false,
+        modeNoteText = ""
+      } = options;
+
+      elements.videoCodec.disabled = disableVideoCodec;
+      elements.audioCodec.disabled = disableAudioCodec;
+      elements.preset.disabled = disablePreset;
+      elements.resolution.disabled = disableResolution;
+      elements.frameRate.disabled = disableFrameRate;
+      elements.modeNote.textContent = modeNoteText;
+      updateModeCards(values);
+    }
+
+    function applyOperationLayout(operation, values) {
+      Object.entries(elements.operationSections).forEach(([sectionId, sectionList]) => {
+        const isVisible = operation.visibleSections.includes(sectionId);
+        sectionList.forEach((section) => {
+          section.classList.toggle("is-hidden", !isVisible);
+        });
+      });
+
+      elements.modeSection.classList.toggle("is-hidden", !operation.showModeSection);
+      elements.encodeSection.classList.toggle("is-hidden", !operation.showEncodeSection);
+      elements.optionsSection.classList.toggle("is-hidden", !operation.showOptionsSection);
+      elements.operationDescription.textContent = operation.description;
+      elements.generateButton.disabled = false;
+      elements.commandOutput.placeholder = "ここに ffmpeg コマンドが表示されます";
+
+      if (operation.id === "trim-edge") {
+        updateTrimTimeHint(values);
+      }
+      if (operation.id === "fade") {
+        updateFadeFieldState(values);
+      }
+    }
+
+    const operations = {
+      cut: {
+        id: "cut",
+        label: "動画カット",
+        description: "開始時刻と終了時刻を指定して、必要な区間だけを切り出します。",
+        visibleSections: ["cut"],
+        showModeSection: true,
+        showEncodeSection: true,
+        showOptionsSection: true,
+        neutralMessage: "開始時刻と終了時刻を入力すると、ここにコマンドを表示します。",
+        hasRequiredValues(values) {
+          return Boolean(values.inputFile && values.outputFile && values.startTime && values.endTime);
+        },
+        validate(values, options = {}) {
+          const { enforceRequired = false } = options;
+          const errors = [];
+          validateCommonFiles(values, errors, enforceRequired);
+
+          if (enforceRequired && !values.startTime) {
+            errors.push("開始時刻を入力してください。");
+          }
+          if (enforceRequired && !values.endTime) {
+            errors.push("終了時刻を入力してください。");
+          }
+
+          const startSeconds = values.startTime ? parseTimecode(values.startTime) : null;
+          const endSeconds = values.endTime ? parseTimecode(values.endTime) : null;
+
+          if (values.startTime && startSeconds == null) {
+            errors.push("開始時刻は HH:MM:SS 形式で入力してください。");
+          }
+          if (values.endTime && endSeconds == null) {
+            errors.push("終了時刻は HH:MM:SS 形式で入力してください。");
+          }
+          if (startSeconds != null && endSeconds != null && startSeconds >= endSeconds) {
+            errors.push("終了時刻は開始時刻より後にしてください。");
+          }
+
+          validateResolutionAndFrameRate(values, errors);
+
+          return {
+            errors,
+            startSeconds,
+            endSeconds
+          };
+        },
+        buildResult(values, validationResult) {
+          const durationSeconds = validationResult.endSeconds - validationResult.startSeconds;
+          const duration = formatDuration(durationSeconds);
+          return {
+            command: values.mode === "fast"
+              ? buildFastCutCommand(values, duration)
+              : buildAccurateCutCommand(values, duration),
+            duration
+          };
+        },
+        buildSummary(values, validationResult) {
+          const chips = [];
+          chips.push(values.mode === "fast" ? "コピー (-c copy)" : `再エンコード (${values.videoCodec})`);
+          if (validationResult.startSeconds != null && validationResult.endSeconds != null && validationResult.endSeconds > validationResult.startSeconds) {
+            chips.push(`長さ ${formatDuration(validationResult.endSeconds - validationResult.startSeconds)}`);
+          }
+          if (values.mode === "accurate" && !values.audioNone) {
+            chips.push(`音声 ${values.audioCodec}`);
+            chips.push(`preset ${values.preset}`);
+          }
+          if (values.audioNone) {
+            chips.push("音声なし (-an)");
+          }
+          if (values.mode === "accurate" && values.resolution) {
+            chips.push(`解像度 ${values.resolution}`);
+          }
+          if (values.mode === "accurate" && values.frameRate) {
+            chips.push(`FPS ${values.frameRate}`);
+          }
+          chips.push(values.overwrite ? "上書きあり (-y)" : "上書きなし");
+          return chips;
+        },
+        applyUiState(values) {
+          const isFastMode = values.mode === "fast";
+          const isAudioDisabled = isFastMode || values.audioNone;
+
+          setCommonEncodeState(values, {
+            disableVideoCodec: isFastMode,
+            disableAudioCodec: isAudioDisabled,
+            disablePreset: isFastMode,
+            disableResolution: isFastMode,
+            disableFrameRate: isFastMode,
+            modeNoteText: isFastMode
+              ? "コピーでは -c copy を固定で使うため、コーデック、preset、解像度、フレームレートは反映されません。"
+              : values.audioNone
+                ? "再エンコードでは動画と音声を再エンコードします。音声なしが ON のため、-an を優先して音声コーデックは無効化しています。"
+                : "再エンコードでは動画コーデック、音声コーデック、preset、解像度、フレームレートが反映されます。"
+          });
+        },
+        getSuccessMessage(values, result) {
+          return `${this.label}の${values.mode === "fast" ? "コピー" : "再エンコード"}コマンドを生成しました。切り出し長さは ${result.duration} です。`;
+        }
+      },
+      "trim-edge": {
+        id: "trim-edge",
+        label: "先頭 / 末尾カット",
+        description: "動画の冒頭側または末尾側だけを削除します。基準時刻を 1 つだけ指定する簡易カットです。",
+        visibleSections: ["trim-edge"],
+        showModeSection: true,
+        showEncodeSection: true,
+        showOptionsSection: true,
+        neutralMessage: "カット対象と基準時刻を入力すると、ここにコマンドを表示します。",
+        hasRequiredValues(values) {
+          return Boolean(values.inputFile && values.outputFile && values.trimTime);
+        },
+        validate(values, options = {}) {
+          const { enforceRequired = false } = options;
+          const errors = [];
+          validateCommonFiles(values, errors, enforceRequired);
+
+          if (enforceRequired && !values.trimTime) {
+            errors.push("基準時刻を入力してください。");
+          }
+
+          const trimSeconds = values.trimTime ? parseTimecode(values.trimTime) : null;
+
+          if (values.trimTime && trimSeconds == null) {
+            errors.push("基準時刻は HH:MM:SS 形式で入力してください。");
+          }
+          if (trimSeconds === 0) {
+            errors.push("基準時刻は 00:00:00 より後にしてください。");
+          }
+
+          validateResolutionAndFrameRate(values, errors);
+
+          return {
+            errors,
+            trimSeconds
+          };
+        },
+        buildResult(values, validationResult) {
+          const trimPoint = formatDuration(validationResult.trimSeconds);
+          return {
+            command: values.mode === "fast"
+              ? buildFastTrimEdgeCommand(values, trimPoint)
+              : buildAccurateTrimEdgeCommand(values, trimPoint),
+            trimPoint
+          };
+        },
+        buildSummary(values, validationResult) {
+          const chips = [];
+          chips.push(values.trimDirection === "start" ? "先頭カット" : "末尾カット");
+          if (validationResult.trimSeconds != null) {
+            chips.push(values.trimDirection === "start"
+              ? `${formatDuration(validationResult.trimSeconds)} より後を残す`
+              : `${formatDuration(validationResult.trimSeconds)} までを残す`);
+          }
+          chips.push(values.mode === "fast" ? "コピー (-c copy)" : `再エンコード (${values.videoCodec})`);
+          if (values.mode === "accurate" && !values.audioNone) {
+            chips.push(`音声 ${values.audioCodec}`);
+            chips.push(`preset ${values.preset}`);
+          }
+          if (values.audioNone) {
+            chips.push("音声なし (-an)");
+          }
+          if (values.mode === "accurate" && values.resolution) {
+            chips.push(`解像度 ${values.resolution}`);
+          }
+          if (values.mode === "accurate" && values.frameRate) {
+            chips.push(`FPS ${values.frameRate}`);
+          }
+          chips.push(values.overwrite ? "上書きあり (-y)" : "上書きなし");
+          return chips;
+        },
+        applyUiState(values) {
+          const isFastMode = values.mode === "fast";
+          const isAudioDisabled = isFastMode || values.audioNone;
+          updateTrimTimeHint(values);
+          setCommonEncodeState(values, {
+            disableVideoCodec: isFastMode,
+            disableAudioCodec: isAudioDisabled,
+            disablePreset: isFastMode,
+            disableResolution: isFastMode,
+            disableFrameRate: isFastMode,
+            modeNoteText: isFastMode
+              ? "コピーでは -c copy を固定で使うため、コーデック、preset、解像度、フレームレートは反映されません。"
+              : values.audioNone
+                ? "再エンコードでは動画と音声を再エンコードします。音声なしが ON のため、-an を優先して音声コーデックは無効化しています。"
+                : "再エンコードでは動画コーデック、音声コーデック、preset、解像度、フレームレートが反映されます。"
+          });
+        },
+        getSuccessMessage(values, result) {
+          return `${values.trimDirection === "start" ? "先頭カット" : "末尾カット"}の${values.mode === "fast" ? "コピー" : "再エンコード"}コマンドを生成しました。基準時刻は ${result.trimPoint} です。`;
+        }
+      },
+      "speed-change": {
+        id: "speed-change",
+        label: "速度変更",
+        description: "動画全体の再生速度を変更します。速度を変えるため、再エンコードが必須です。",
+        visibleSections: ["speed-change"],
+        showModeSection: false,
+        showEncodeSection: true,
+        showOptionsSection: true,
+        neutralMessage: "速度倍率を入力すると、ここにコマンドを表示します。",
+        hasRequiredValues(values) {
+          return Boolean(values.inputFile && values.outputFile && values.speedFactor);
+        },
+        validate(values, options = {}) {
+          const { enforceRequired = false } = options;
+          const errors = [];
+          validateCommonFiles(values, errors, enforceRequired);
+
+          if (enforceRequired && !values.speedFactor) {
+            errors.push("速度倍率を入力してください。");
+          }
+
+          const speedFactor = values.speedFactor ? parseDecimalValue(values.speedFactor) : null;
+
+          if (values.speedFactor && speedFactor == null) {
+            errors.push("速度倍率は 1.25 のように数値で入力してください。");
+          }
+          if (speedFactor != null && (speedFactor < 0.25 || speedFactor > 4)) {
+            errors.push("速度倍率は 0.25 から 4.0 の範囲で指定してください。");
+          }
+          if (speedFactor === 1) {
+            errors.push("速度倍率は 1.0 以外を指定してください。");
+          }
+          if (!values.audioNone && values.audioCodec === "copy") {
+            errors.push("速度変更では音声コーデックに copy は使えません。");
+          }
+
+          validateResolutionAndFrameRate(values, errors);
+
+          return {
+            errors,
+            speedFactor
+          };
+        },
+        buildResult(values, validationResult) {
+          const speedFactor = validationResult.speedFactor;
+          const videoFilter = `setpts=${formatFilterNumber(1 / speedFactor)}*PTS`;
+          const audioFilter = values.audioNone ? null : buildAtempoFilter(speedFactor);
+
+          return {
+            command: buildTranscodeCommand(values, {
+              videoFilter,
+              audioFilter
+            }),
+            speedFactor
+          };
+        },
+        buildSummary(values, validationResult) {
+          const chips = [];
+          chips.push(`速度 ${validationResult.speedFactor != null ? formatFilterNumber(validationResult.speedFactor) : (values.speedFactor || "-")} 倍`);
+          if (!values.audioNone) {
+            chips.push(`音声 ${values.audioCodec}`);
+          }
+          if (values.audioNone) {
+            chips.push("音声なし (-an)");
+          }
+          chips.push(`動画 ${values.videoCodec}`);
+          chips.push(`preset ${values.preset}`);
+          if (values.resolution) {
+            chips.push(`解像度 ${values.resolution}`);
+          }
+          if (values.frameRate) {
+            chips.push(`FPS ${values.frameRate}`);
+          }
+          chips.push(values.overwrite ? "上書きあり (-y)" : "上書きなし");
+          return chips;
+        },
+        applyUiState(values) {
+          setCommonEncodeState(values, {
+            disableVideoCodec: false,
+            disableAudioCodec: values.audioNone,
+            disablePreset: false,
+            disableResolution: false,
+            disableFrameRate: false,
+            modeNoteText: values.audioNone
+              ? "速度変更は再エンコード固定です。音声なしが ON のため、-an を優先して音声コーデックは無効化しています。"
+              : "速度変更は再エンコード固定です。映像は setpts、音声は atempo で調整します。"
+          });
+        },
+        getSuccessMessage(values, result) {
+          return `${this.label}のコマンドを生成しました。再生速度は ${formatFilterNumber(result.speedFactor)} 倍です。`;
+        }
+      },
+      fade: {
+        id: "fade",
+        label: "フェードイン / フェードアウト",
+        description: "フェードイン、フェードアウト、またはその両方を適用します。映像と音声を合わせてフェードさせるため、再エンコードが必須です。",
+        visibleSections: ["fade"],
+        showModeSection: false,
+        showEncodeSection: true,
+        showOptionsSection: true,
+        neutralMessage: "フェード設定を入力すると、ここにコマンドを表示します。",
+        hasRequiredValues(values) {
+          const needsFadeStart = values.fadeType !== "in";
+          return Boolean(values.inputFile && values.outputFile && values.fadeDuration && (!needsFadeStart || values.fadeStartTime));
+        },
+        validate(values, options = {}) {
+          const { enforceRequired = false } = options;
+          const errors = [];
+          const needsFadeStart = values.fadeType !== "in";
+          validateCommonFiles(values, errors, enforceRequired);
+
+          if (enforceRequired && !values.fadeDuration) {
+            errors.push("フェード時間を入力してください。");
+          }
+          if (needsFadeStart && enforceRequired && !values.fadeStartTime) {
+            errors.push("フェードアウト開始時刻を入力してください。");
+          }
+
+          const fadeDurationSeconds = values.fadeDuration ? parseDecimalValue(values.fadeDuration) : null;
+          const fadeStartSeconds = values.fadeStartTime ? parseTimecode(values.fadeStartTime) : null;
+
+          if (values.fadeDuration && fadeDurationSeconds == null) {
+            errors.push("フェード時間は 1.5 のように数値で入力してください。");
+          }
+          if (fadeDurationSeconds != null && fadeDurationSeconds <= 0) {
+            errors.push("フェード時間は 0 より大きい値を指定してください。");
+          }
+          if (needsFadeStart && values.fadeStartTime && fadeStartSeconds == null) {
+            errors.push("フェードアウト開始時刻は HH:MM:SS 形式で入力してください。");
+          }
+          if (!values.audioNone && values.audioCodec === "copy") {
+            errors.push("フェードでは音声コーデックに copy は使えません。");
+          }
+
+          validateResolutionAndFrameRate(values, errors);
+
+          return {
+            errors,
+            fadeDurationSeconds,
+            fadeStartSeconds
+          };
+        },
+        buildResult(values, validationResult) {
+          const durationToken = formatFilterNumber(validationResult.fadeDurationSeconds);
+          const videoFilters = [];
+          const audioFilters = [];
+
+          if (values.fadeType === "in" || values.fadeType === "both") {
+            videoFilters.push(`fade=t=in:st=0:d=${durationToken}`);
+            if (!values.audioNone) {
+              audioFilters.push(`afade=t=in:st=0:d=${durationToken}`);
+            }
+          }
+
+          if (values.fadeType === "out" || values.fadeType === "both") {
+            const fadeStartToken = formatFilterNumber(validationResult.fadeStartSeconds);
+            videoFilters.push(`fade=t=out:st=${fadeStartToken}:d=${durationToken}`);
+            if (!values.audioNone) {
+              audioFilters.push(`afade=t=out:st=${fadeStartToken}:d=${durationToken}`);
+            }
+          }
+
+          return {
+            command: buildTranscodeCommand(values, {
+              videoFilter: videoFilters.join(","),
+              audioFilter: values.audioNone ? null : audioFilters.join(",")
+            }),
+            fadeDurationSeconds: validationResult.fadeDurationSeconds
+          };
+        },
+        buildSummary(values, validationResult) {
+          const chips = [];
+          const fadeLabel = values.fadeType === "in"
+            ? "フェードイン"
+            : values.fadeType === "out"
+              ? "フェードアウト"
+              : "フェードイン + フェードアウト";
+          chips.push(fadeLabel);
+          if (validationResult.fadeDurationSeconds != null) {
+            chips.push(`時間 ${formatFilterNumber(validationResult.fadeDurationSeconds)} 秒`);
+          }
+          if ((values.fadeType === "out" || values.fadeType === "both") && values.fadeStartTime) {
+            chips.push(`アウト開始 ${values.fadeStartTime}`);
+          }
+          if (!values.audioNone) {
+            chips.push(`音声 ${values.audioCodec}`);
+          }
+          if (values.audioNone) {
+            chips.push("音声なし (-an)");
+          }
+          chips.push(`動画 ${values.videoCodec}`);
+          chips.push(`preset ${values.preset}`);
+          if (values.resolution) {
+            chips.push(`解像度 ${values.resolution}`);
+          }
+          if (values.frameRate) {
+            chips.push(`FPS ${values.frameRate}`);
+          }
+          chips.push(values.overwrite ? "上書きあり (-y)" : "上書きなし");
+          return chips;
+        },
+        applyUiState(values) {
+          updateFadeFieldState(values);
+          setCommonEncodeState(values, {
+            disableVideoCodec: false,
+            disableAudioCodec: values.audioNone,
+            disablePreset: false,
+            disableResolution: false,
+            disableFrameRate: false,
+            modeNoteText: values.audioNone
+              ? "フェードは再エンコード固定です。音声なしが ON のため、-an を優先して音声コーデックは無効化しています。"
+              : "フェードは再エンコード固定です。映像と音声の両方へフィルタを適用します。"
+          });
+        },
+        getSuccessMessage(values, result) {
+          return `${this.label}のコマンドを生成しました。フェード時間は ${formatFilterNumber(result.fadeDurationSeconds)} 秒です。`;
+        }
+      }
+    };
+
+    function resetOutputToNeutral(operation) {
+      elements.commandOutput.value = "";
+      elements.copyButton.disabled = true;
+      renderErrors([]);
+      setStatus("idle", "入力待ち");
+      setFeedback("neutral", operation.neutralMessage);
+    }
+
+    function refreshPreview(options = {}) {
+      const { forceErrors = false } = options;
+      const operation = getActiveOperation();
+      const values = getValues();
+      applyOperationLayout(operation, values);
+      operation.applyUiState(values);
+
+      const hasRequiredValues = operation.hasRequiredValues(values);
+      const validationResult = operation.validate(values, { enforceRequired: forceErrors || hasRequiredValues });
+      renderSummary(operation.buildSummary(values, validationResult));
+
+      if (!hasRequiredValues && !forceErrors) {
+        resetOutputToNeutral(operation);
+        return;
+      }
+
+      if (validationResult.errors.length > 0) {
+        elements.commandOutput.value = "";
+        elements.copyButton.disabled = true;
+        renderErrors(validationResult.errors);
+        setStatus("error", "入力エラー");
+        setFeedback("error", "入力内容を確認してください。エラーが解消されるまでコマンドは生成されません。");
+        return;
+      }
+
+      const result = operation.buildResult(values, validationResult);
+      elements.commandOutput.value = result.command;
+      elements.copyButton.disabled = false;
+      renderErrors([]);
+      setStatus("ready", "生成済み");
+      setFeedback("success", operation.getSuccessMessage(values, result));
+    }
+
+    async function copyCommand() {
+      if (!elements.commandOutput.value) {
+        return;
+      }
+      try {
+        if (navigator.clipboard && window.isSecureContext) {
+          await navigator.clipboard.writeText(elements.commandOutput.value);
+        } else {
+          elements.commandOutput.focus();
+          elements.commandOutput.select();
+          document.execCommand("copy");
+          elements.commandOutput.setSelectionRange(0, 0);
+          elements.commandOutput.blur();
+        }
+        setFeedback("success", "コマンドをクリップボードにコピーしました。");
+      } catch (error) {
+        setFeedback("error", "コピーに失敗しました。コマンドを手動で選択してコピーしてください。");
+      }
+    }
+
+    elements.form.addEventListener("submit", (event) => {
+      event.preventDefault();
+      state.hasSubmitted = true;
+      refreshPreview({ forceErrors: true });
+    });
+
+    elements.form.addEventListener("input", () => {
+      refreshPreview({ forceErrors: state.hasSubmitted });
+    });
+
+    elements.form.addEventListener("change", (event) => {
+      if (event.target === elements.operationSelect) {
+        state.hasSubmitted = false;
+      }
+      refreshPreview({ forceErrors: state.hasSubmitted });
+    });
+
+    elements.copyButton.addEventListener("click", copyCommand);
+
+    refreshPreview();
+  </script>
+</body>
+</html>
