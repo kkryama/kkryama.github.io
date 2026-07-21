@@ -32,7 +32,11 @@
 ├── assets/               # 画像などの静的ファイル
 │   └── images/               # 画像ファイル
 ├── apps/                 # 静的Webアプリケーション
-│   └── check-matrix/         # チェックマトリクス（汎用）アプリ
+│   ├── index.html            # アプリ一覧ページ
+│   ├── check-matrix/         # チェックマトリクス（汎用）アプリ
+│   ├── bond-log/             # 配信者向けリスナー管理アプリ
+│   ├── timer/                # OBS対応タイマー
+│   └── ffmpeg-command-builder/ # FFmpegコマンド生成ツール
 ├── _site/                # ビルドされたサイト (Git 管理対象外)
 ├── .sass-cache/          # Sassキャッシュ (Git 管理対象外)
 ├── .bundle/              # Bundlerキャッシュ (Git 管理対象外)
@@ -216,9 +220,21 @@ last_modified_at: YYYY-MM-DD HH:MM:SS +TIMEZONE  # ビルド時に自動更新�
 
 ## 静的Webアプリケーション
 - `apps/`: 静的Webアプリケーション用ディレクトリ
+    - このディレクトリは、別リポジトリで開発したアプリケーションを公開するための配信先として利用
+    - アプリ一覧: `https://kkryama.github.io/apps/`
     - `check-matrix/`: チェックマトリクス（汎用）アプリケーション
         - URL: `https://kkryama.github.io/apps/check-matrix/`
         - JavaScriptベースの汎用チェックマトリクス管理ツール
+    - `bond-log/`: BondLog（配信者向けリスナー管理アプリ）
+        - URL: `https://kkryama.github.io/apps/bond-log/`
+        - リスナーとの関係性や配信活動を記録・管理
+    - `timer/`: タイマー
+        - 説明ページ: `https://kkryama.github.io/apps/timer/index.html`
+        - アプリ本体: `https://kkryama.github.io/apps/timer/timer.html`
+        - OBSブラウザソースでも使える透過背景対応タイマー
+    - `ffmpeg-command-builder/`: FFmpeg クリップ編集コマンド生成ツール
+        - URL: `https://kkryama.github.io/apps/ffmpeg-command-builder/`
+        - 動画編集用 ffmpeg コマンドをブラウザ上で組み立て
 
 ### 静的コンテンツの追加方法
 
@@ -226,7 +242,7 @@ last_modified_at: YYYY-MM-DD HH:MM:SS +TIMEZONE  # ビルド時に自動更新�
 
 1. `apps/` 配下に新しいディレクトリを作成
 2. HTMLファイルやJavaScript、CSSファイルを配置
-3. JekyllはAppsディレクトリを処理せずにそのまま配信するため、通常のHTML/CSS/JSが動作
+3. Jekyllは `apps/` ディレクトリを処理せずにそのまま配信するため、通常のHTML/CSS/JSが動作
 4. `https://kkryama.github.io/apps/[ディレクトリ名]/` でアクセス可能
 
 ## Git管理除外設定
