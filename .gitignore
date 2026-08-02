@@ -24,3 +24,9 @@ Thumbs.db
 
 # Log files
 *.log
+
+# Sandbox / prototypes (not part of the site)
+.sandbox/
+
+# Renewal project planning docs (kept local-only, not published)
+_renewal/

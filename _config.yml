@@ -22,6 +22,7 @@ exclude:
   - Gemfile.lock
   - vendor/
   - _templates/
+  - _renewal/
   - apps/**/*.sh
 
 # デフォルト設定
